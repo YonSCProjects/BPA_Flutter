@@ -321,7 +321,8 @@ TextField(
 - **Hebrew Input**: Proper Hebrew keyboard and text handling
 
 ## Git Workflow
-
+ - claude code will manage all version control activitied (adding, commiting, pushing to github etc...)
+ = the github repository is https://github.com/YonSCProjects/BPA_Flutter
 ### Branch Strategy
 - `main`: Production-ready code
 - `develop`: Integration branch

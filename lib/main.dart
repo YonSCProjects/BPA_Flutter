@@ -1,0 +1,50 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
+
+import 'core/theme/hebrew_theme.dart';
+import 'core/constants/hebrew_strings.dart';
+import 'presentation/pages/home_page.dart';
+
+void main() {
+  runApp(const BPApp());
+}
+
+class BPApp extends StatelessWidget {
+  const BPApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: HebrewStrings.appTitle,
+      
+      // Hebrew RTL Configuration
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('he', 'IL'), // Hebrew (Israel)
+      ],
+      locale: const Locale('he', 'IL'),
+      
+      // RTL Text Direction
+      builder: (context, child) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: child!,
+        );
+      },
+      
+      // Hebrew Theme
+      theme: HebrewTheme.hebrewThemeData,
+      
+      // Debug Banner
+      debugShowCheckedModeBanner: false,
+      
+      // Home Page
+      home: const HomePage(),
+    );
+  }
+}
