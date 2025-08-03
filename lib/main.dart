@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/hebrew_theme.dart';
 import 'core/constants/hebrew_strings.dart';
-import 'presentation/pages/home_page.dart';
+import 'services/google_auth_service.dart';
+import 'services/google_sheets_service.dart';
+import 'presentation/providers/form_provider.dart';
+import 'presentation/pages/student_form_page.dart';
 
 void main() {
   runApp(const BPApp());
@@ -15,36 +18,53 @@ class BPApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: HebrewStrings.appTitle,
-      
-      // Hebrew RTL Configuration
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => GoogleAuthService()..initialize(),
+        ),
+        ChangeNotifierProxyProvider<GoogleAuthService, GoogleSheetsService>(
+          create: (context) => GoogleSheetsService(
+            context.read<GoogleAuthService>(),
+          ),
+          update: (context, authService, sheetsService) =>
+              sheetsService ?? GoogleSheetsService(authService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => FormProvider(),
+        ),
       ],
-      supportedLocales: const [
-        Locale('he', 'IL'), // Hebrew (Israel)
-      ],
-      locale: const Locale('he', 'IL'),
-      
-      // RTL Text Direction
-      builder: (context, child) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: child!,
-        );
-      },
-      
-      // Hebrew Theme
-      theme: HebrewTheme.hebrewThemeData,
-      
-      // Debug Banner
-      debugShowCheckedModeBanner: false,
-      
-      // Home Page
-      home: const HomePage(),
+      child: MaterialApp(
+        title: HebrewStrings.appTitle,
+        
+        // Hebrew RTL Configuration
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('he', 'IL'), // Hebrew (Israel)
+        ],
+        locale: const Locale('he', 'IL'),
+        
+        // RTL Text Direction
+        builder: (context, child) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: child!,
+          );
+        },
+        
+        // Hebrew Theme
+        theme: HebrewTheme.hebrewThemeData,
+        
+        // Debug Banner
+        debugShowCheckedModeBanner: false,
+        
+        // Home Page
+        home: const StudentFormPage(),
+      ),
     );
   }
 }

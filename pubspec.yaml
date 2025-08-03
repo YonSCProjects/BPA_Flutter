@@ -36,6 +36,7 @@ dependencies:
   # Google APIs and Authentication
   google_sign_in: ^6.1.5           # Google OAuth authentication
   googleapis: ^11.4.0              # Google Sheets API client
+  googleapis_auth: ^1.4.1          # Google APIs authentication library
   http: ^1.1.0                     # HTTP client for API calls
 
   # State Management and Storage
