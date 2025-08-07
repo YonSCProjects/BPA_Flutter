@@ -42,7 +42,7 @@ class ScoreDisplay extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'סה"כ ציון',
+                'סה"כ',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -91,16 +91,8 @@ class ScoreDisplay extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  _getScoreDescription(percentage),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: _getScoreColor(percentage),
-                        fontWeight: FontWeight.w500,
-                      ),
-                  textDirection: TextDirection.rtl,
-                ),
                 Text(
                   '${totalScore.toString().padLeft(2, '0')} נקודות',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -128,17 +120,6 @@ class ScoreDisplay extends StatelessWidget {
     }
   }
 
-  String _getScoreDescription(double percentage) {
-    if (percentage >= 90) {
-      return 'מצוין';
-    } else if (percentage >= 70) {
-      return 'טוב מאוד';
-    } else if (percentage >= 50) {
-      return 'טוב';
-    } else {
-      return 'זקוק לשיפור';
-    }
-  }
 }
 
 class ScoreBreakdown extends StatelessWidget {
@@ -160,7 +141,7 @@ class ScoreBreakdown extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'פירוט ציונים',
+              'פירוט ניקוד',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),

@@ -340,7 +340,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'ציונים',
+          'ניקוד',
           style: Theme.of(context).textTheme.headlineSmall,
           textDirection: TextDirection.rtl,
         ),
