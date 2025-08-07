@@ -33,6 +33,7 @@ class GoogleSheetsService extends ChangeNotifier {
   int? _sheetId;
   bool _isLoading = false;
   String? _error;
+  String? _recoveryMessage;
   AutocompleteData _autocompleteData = AutocompleteData.empty();
 
   GoogleSheetsService(this._authService) {
@@ -41,6 +42,7 @@ class GoogleSheetsService extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get recoveryMessage => _recoveryMessage;
   String? get spreadsheetId => _spreadsheetId;
   AutocompleteData get autocompleteData => _autocompleteData;
   bool get isInitialized => _spreadsheetId != null && _sheetsApi != null;
@@ -48,6 +50,7 @@ class GoogleSheetsService extends ChangeNotifier {
   Future<bool> initialize() async {
     _setLoading(true);
     _setError(null);
+    _setRecoveryMessage(null);
 
     try {
       if (!_authService.isAuthenticated) {
@@ -84,7 +87,11 @@ class GoogleSheetsService extends ChangeNotifier {
     await _findExistingSpreadsheet();
     
     if (_spreadsheetId == null) {
-      await _createSpreadsheet();
+      // Check if spreadsheet exists in trash before creating new one
+      final recoveredFromTrash = await _checkAndRecoverFromTrash();
+      if (!recoveredFromTrash) {
+        await _createSpreadsheet();
+      }
     }
     
     // Get sheet ID for API operations
@@ -187,6 +194,69 @@ class GoogleSheetsService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error getting sheet ID: $e');
       _sheetId = 0; // fallback to 0
+    }
+  }
+
+  Future<bool> _checkAndRecoverFromTrash() async {
+    if (_driveApi == null) return false;
+
+    try {
+      debugPrint('Checking for BPApp spreadsheet in trash...');
+      
+      // Search for the spreadsheet in trash
+      final response = await _driveApi!.files.list(
+        q: "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=true",
+        spaces: 'drive',
+        orderBy: 'modifiedTime desc', // Get most recently deleted first
+      );
+
+      if (response.files != null && response.files!.isNotEmpty) {
+        final deletedFile = response.files!.first;
+        debugPrint('Found BPApp spreadsheet in trash: ${deletedFile.id}');
+        
+        // Attempt to recover the file from trash
+        return await _recoverFromTrash(deletedFile.id!, deletedFile.name!);
+      }
+      
+      debugPrint('No BPApp spreadsheet found in trash');
+      return false;
+    } catch (e) {
+      debugPrint('Error checking trash for spreadsheet: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _recoverFromTrash(String fileId, String fileName) async {
+    if (_driveApi == null) return false;
+
+    try {
+      debugPrint('Attempting to recover spreadsheet from trash: $fileId');
+      
+      // Create an update request to untrash the file
+      final fileUpdate = drive.File();
+      fileUpdate.trashed = false;
+      
+      // Restore the file from trash
+      await _driveApi!.files.update(
+        fileUpdate,
+        fileId,
+      );
+      
+      // Set the recovered spreadsheet ID
+      _spreadsheetId = fileId;
+      
+      debugPrint('Successfully recovered BPApp spreadsheet from trash: $fileId');
+      
+      // Set recovery success message
+      _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! כל הנתונים שלך נשמרו.';
+      
+      // Notify about recovery (this could trigger UI notification)
+      notifyListeners();
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error recovering spreadsheet from trash: $e');
+      return false;
     }
   }
 
@@ -592,6 +662,7 @@ class GoogleSheetsService extends ChangeNotifier {
     _sheetId = null;
     _autocompleteData = AutocompleteData.empty();
     _setError(null);
+    _setRecoveryMessage(null);
     notifyListeners();
   }
 
@@ -603,6 +674,15 @@ class GoogleSheetsService extends ChangeNotifier {
   void _setError(String? error) {
     _error = error;
     notifyListeners();
+  }
+
+  void _setRecoveryMessage(String? message) {
+    _recoveryMessage = message;
+    notifyListeners();
+  }
+
+  void clearRecoveryMessage() {
+    _setRecoveryMessage(null);
   }
 
   @override

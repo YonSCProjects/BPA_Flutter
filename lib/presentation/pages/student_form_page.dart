@@ -255,6 +255,51 @@ class _StudentFormPageState extends State<StudentFormPage> {
       key: _formKey,
       child: Column(
         children: [
+          // Show recovery message if available
+          Consumer<GoogleSheetsService>(
+            builder: (context, sheetsService, child) {
+              if (sheetsService.recoveryMessage != null) {
+                return Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.restore,
+                        color: Colors.green.shade700,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          sheetsService.recoveryMessage!,
+                          style: TextStyle(
+                            color: Colors.green.shade800,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textDirection: TextDirection.rtl,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => sheetsService.clearRecoveryMessage(),
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.green.shade600,
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
