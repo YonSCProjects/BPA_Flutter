@@ -30,6 +30,7 @@ class GoogleSheetsService extends ChangeNotifier {
   sheets.SheetsApi? _sheetsApi;
   drive.DriveApi? _driveApi;
   String? _spreadsheetId;
+  int? _sheetId;
   bool _isLoading = false;
   String? _error;
   AutocompleteData _autocompleteData = AutocompleteData.empty();
@@ -84,6 +85,11 @@ class GoogleSheetsService extends ChangeNotifier {
     
     if (_spreadsheetId == null) {
       await _createSpreadsheet();
+    }
+    
+    // Get sheet ID for API operations
+    if (_spreadsheetId != null && _sheetId == null) {
+      await _getSheetId();
     }
   }
 
@@ -161,6 +167,26 @@ class GoogleSheetsService extends ChangeNotifier {
       debugPrint('Headers added successfully');
     } catch (e) {
       debugPrint('Error adding headers: $e');
+    }
+  }
+
+  Future<void> _getSheetId() async {
+    if (_sheetsApi == null || _spreadsheetId == null) return;
+
+    try {
+      final response = await _sheetsApi!.spreadsheets.get(_spreadsheetId!);
+      if (response.sheets != null && response.sheets!.isNotEmpty) {
+        // Find the sheet with our worksheet name
+        final targetSheet = response.sheets!.firstWhere(
+          (sheet) => sheet.properties?.title == worksheetName,
+          orElse: () => response.sheets!.first, // fallback to first sheet
+        );
+        _sheetId = targetSheet.properties?.sheetId ?? 0;
+        debugPrint('Found sheet ID: $_sheetId');
+      }
+    } catch (e) {
+      debugPrint('Error getting sheet ID: $e');
+      _sheetId = 0; // fallback to 0
     }
   }
 
@@ -371,6 +397,116 @@ class GoogleSheetsService extends ChangeNotifier {
     if (_sheetsApi == null || _spreadsheetId == null) return false;
 
     try {
+      final insertPosition = await _findInsertPosition(record);
+      
+      if (insertPosition == -1) {
+        return await _appendToEnd(record);
+      } else {
+        return await _insertRecordAtPosition(record, insertPosition);
+      }
+    } catch (e) {
+      debugPrint('Error appending record: $e');
+      return false;
+    }
+  }
+
+  Future<int> _findInsertPosition(StudentRecord record) async {
+    if (_sheetsApi == null || _spreadsheetId == null) return -1;
+
+    try {
+      final response = await _sheetsApi!.spreadsheets.values.get(
+        _spreadsheetId!,
+        '$worksheetName!A2:D',
+      );
+
+      if (response.values == null || response.values!.isEmpty) {
+        return 2; // Insert after header row
+      }
+
+      final recordDate = DateTime.tryParse(record.date);
+      if (recordDate == null) return -1;
+
+      for (int i = 0; i < response.values!.length; i++) {
+        final row = response.values![i];
+        if (row.isEmpty) continue;
+
+        final existingDate = DateTime.tryParse(row[0]?.toString() ?? '');
+        if (existingDate == null) continue;
+
+        final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
+
+        // Compare dates first (primary sort)
+        if (recordDate.isBefore(existingDate)) {
+          return i + 2; // +2 because sheet is 1-indexed and has header row
+        }
+        
+        // If same date, compare class numbers (secondary sort)
+        if (recordDate.isAtSameMomentAs(existingDate)) {
+          if (record.classNumber < existingClassNumber) {
+            return i + 2;
+          }
+        }
+      }
+
+      return -1; // Insert at end
+    } catch (e) {
+      debugPrint('Error finding insert position: $e');
+      return -1;
+    }
+  }
+
+  Future<bool> _insertRecordAtPosition(StudentRecord record, int rowPosition) async {
+    if (_sheetsApi == null || _spreadsheetId == null || _sheetId == null) return false;
+
+    try {
+      // Insert empty row at the target position
+      final insertRequest = sheets.Request(
+        insertRange: sheets.InsertRangeRequest(
+          range: sheets.GridRange(
+            sheetId: _sheetId!, // Use the actual sheet ID
+            startRowIndex: rowPosition - 1, // 0-indexed for API
+            endRowIndex: rowPosition,
+            startColumnIndex: 0,
+            endColumnIndex: hebrewHeaders.length,
+          ),
+          shiftDimension: 'ROWS',
+        ),
+      );
+
+      final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
+        requests: [insertRequest],
+      );
+
+      await _sheetsApi!.spreadsheets.batchUpdate(
+        batchUpdateRequest,
+        _spreadsheetId!,
+      );
+
+      // Now populate the new row with data
+      final range = '$worksheetName!A$rowPosition:L$rowPosition';
+      final valueRange = sheets.ValueRange(
+        values: [record.toSheetRow()],
+      );
+
+      await _sheetsApi!.spreadsheets.values.update(
+        valueRange,
+        _spreadsheetId!,
+        range,
+        valueInputOption: 'RAW',
+      );
+
+      debugPrint('Inserted record at position $rowPosition');
+      return true;
+    } catch (e) {
+      debugPrint('Error inserting record at position $rowPosition: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _appendToEnd(StudentRecord record) async {
+    if (_sheetsApi == null || _spreadsheetId == null) return false;
+
+    try {
       final valueRange = sheets.ValueRange(
         values: [record.toSheetRow()],
       );
@@ -385,7 +521,7 @@ class GoogleSheetsService extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      debugPrint('Error appending record: $e');
+      debugPrint('Error appending record to end: $e');
       return false;
     }
   }
@@ -453,6 +589,7 @@ class GoogleSheetsService extends ChangeNotifier {
     _sheetsApi = null;
     _driveApi = null;
     _spreadsheetId = null;
+    _sheetId = null;
     _autocompleteData = AutocompleteData.empty();
     _setError(null);
     notifyListeners();
