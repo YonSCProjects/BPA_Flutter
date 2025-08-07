@@ -15,10 +15,8 @@ class GoogleAuthService extends ChangeNotifier {
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: _scopes,
-    // serverClientId is only for mobile platforms, not web
-    serverClientId: kIsWeb ? null : '302221962392-fpgmic64q39baml2nfnqkhc586n5r6me.apps.googleusercontent.com',
-    // For web, we need to specify the client ID
-    clientId: kIsWeb ? '302221962392-fpgmic64q39baml2nfnqkhc586n5r6me.apps.googleusercontent.com' : null,
+    // Web OAuth client ID from Firebase project (client_type: 3)
+    serverClientId: '579440030749-4hs2mhr7egcafqok2looja0vqditnodp.apps.googleusercontent.com',
   );
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
@@ -38,7 +36,9 @@ class GoogleAuthService extends ChangeNotifier {
 
   GoogleAuthService() {
     _googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount? account) {
+      debugPrint('[AUTH] onCurrentUserChanged fired: ${account?.email}');
       _currentUser = account;
+      debugPrint('[AUTH] After listener update - isAuthenticated: $isAuthenticated');
       notifyListeners();
     });
   }
@@ -48,38 +48,71 @@ class GoogleAuthService extends ChangeNotifier {
     _setError(null);
 
     try {
+      debugPrint('[AUTH] Starting initialization...');
       final GoogleSignInAccount? account = await _googleSignIn.signInSilently();
+      debugPrint('[AUTH] Silent sign-in result: ${account?.email}');
+      
       if (account != null) {
         _currentUser = account;
-        debugPrint('Silent sign-in successful: ${account.email}');
+        debugPrint('[AUTH] Silent sign-in successful: ${account.email}');
+        debugPrint('[AUTH] After silent sign-in - isAuthenticated: $isAuthenticated');
+        
+        // Verify token is valid
+        final hasValidToken = await this.hasValidToken();
+        debugPrint('[AUTH] Token validation result: $hasValidToken');
+        
+        if (!hasValidToken) {
+          debugPrint('[AUTH] Token invalid, clearing current user');
+          _currentUser = null;
+        }
+      } else {
+        debugPrint('[AUTH] No cached account found');
       }
     } catch (e) {
       _setError('שגיאה באתחול השירות: ${e.toString()}');
-      debugPrint('GoogleAuthService initialization error: $e');
+      debugPrint('[AUTH] GoogleAuthService initialization error: $e');
     } finally {
       _setLoading(false);
+      debugPrint('[AUTH] Initialization complete - isAuthenticated: $isAuthenticated');
+      notifyListeners(); // Single notification at the end
     }
   }
 
   Future<bool> signIn() async {
+    debugPrint('[AUTH] Starting sign-in process...');
+    debugPrint('[AUTH] Current user before sign-in: $_currentUser');
+    
     _setLoading(true);
     _setError(null);
 
     try {
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      debugPrint('[AUTH] Sign-in returned account: ${account?.email}');
+      
       if (account == null) {
+        debugPrint('[AUTH] Sign-in cancelled by user');
         _setError('ההתחברות בוטלה על ידי המשתמש');
         return false;
       }
 
       _currentUser = account;
-      await _storeUserInfo();
+      debugPrint('[AUTH] Current user set to: ${_currentUser?.email}');
+      debugPrint('[AUTH] isAuthenticated: $isAuthenticated');
       
-      debugPrint('Google Sign-In successful for: ${account.email}');
+      await _storeUserInfo();
+      notifyListeners(); // Notify UI of authentication state change
+      
+      debugPrint('[AUTH] Google Sign-In successful for: ${account.email}');
+      debugPrint('[AUTH] Final isAuthenticated: $isAuthenticated');
       return true;
     } catch (e) {
       _setError('שגיאה בהתחברות: ${e.toString()}');
-      debugPrint('Google Sign-In error: $e');
+      debugPrint('[AUTH] Google Sign-In error: $e');
+      debugPrint('[AUTH] Error type: ${e.runtimeType}');
+      if (e.toString().contains('ApiException')) {
+        debugPrint('[AUTH] This is an ApiException - likely a configuration issue');
+        debugPrint('[AUTH] Check: 1) OAuth client exists 2) SHA-1 matches 3) App is in test users');
+      }
       return false;
     } finally {
       _setLoading(false);
@@ -94,6 +127,7 @@ class GoogleAuthService extends ChangeNotifier {
       await _googleSignIn.signOut();
       _currentUser = null;
       await _clearStoredCredentials();
+      notifyListeners(); // Notify UI of authentication state change
       
       debugPrint('Google Sign-Out successful');
     } catch (e) {

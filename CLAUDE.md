@@ -498,3 +498,56 @@ open ios/Runner.xcworkspace
 - Google API compatibility checks
 - Hebrew localization updates
 - Performance monitoring
+
+## Codebase-Specific Instructions
+
+### Important Reminders
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless they're absolutely necessary for achieving your goal
+- ALWAYS prefer editing an existing file to creating a new one
+- NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User
+
+### Running the Application on Windows
+Since development is done on Windows, use the following commands:
+```bash
+# Run on connected Android device or emulator
+flutter run
+
+# If multiple devices are connected, specify Android
+flutter run -d android
+
+# Run with verbose output for debugging
+flutter run -v
+
+# Build APK for Android testing
+flutter build apk --debug
+```
+
+### Common Windows-Specific Issues & Solutions
+- **Android SDK Path**: If Android SDK is not found, set ANDROID_HOME environment variable
+- **Flutter Doctor Issues**: Run `flutter doctor -v` for detailed diagnostics
+- **Gradle Issues**: Check `android/gradle/wrapper/gradle-wrapper.properties` for correct Gradle version
+- **Google Services**: Ensure `android/app/google-services.json` is present and correctly configured
+
+### Firebase/Google Services Setup
+The app uses Google OAuth and Sheets API. Configuration files:
+- **Android**: `android/app/google-services.json` (already present)
+- **iOS**: `ios/Runner/GoogleService-Info.plist` (needs to be added for iOS development)
+
+### Current Implementation Status
+Based on the codebase analysis:
+- ✅ Project structure created with proper Hebrew RTL support
+- ✅ Google Authentication service (`lib/services/google_auth_service.dart`)
+- ✅ Google Sheets service (`lib/services/google_sheets_service.dart`)
+- ✅ Form provider for state management (`lib/presentation/providers/form_provider.dart`)
+- ✅ Hebrew theme and constants configured
+- ✅ Main student form page (`lib/presentation/pages/student_form_page.dart`)
+- ✅ Custom Hebrew input widgets (date picker, number picker, text field)
+- ✅ Score display widget
+- ✅ Data models (student record, form field config, autocomplete data)
+
+### Dependency Version Notes
+Current versions in pubspec.yaml:
+- Flutter SDK: ^3.8.1
+- intl: ^0.20.2 (note: updated from ^0.18.1 mentioned earlier)
+- flutter_lints: ^5.0.0 (note: updated from ^3.0.0 mentioned earlier)

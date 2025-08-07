@@ -35,15 +35,26 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Future<void> _initializeForm() async {
+    debugPrint('[FORM] _initializeForm called - isAuthenticated: ${_authService.isAuthenticated}');
+    
+    // Ensure authentication service is fully initialized
+    await _authService.initialize();
+    debugPrint('[FORM] After auth initialize - isAuthenticated: ${_authService.isAuthenticated}');
+    
     if (!_authService.isAuthenticated) {
+      debugPrint('[FORM] Not authenticated, prompting sign-in');
       await _promptSignIn();
     }
     
     if (_authService.isAuthenticated && !_sheetsService.isInitialized) {
+      debugPrint('[FORM] Authenticated, initializing sheets service');
       await _sheetsService.initialize();
     }
     
-    await _formProvider.initializeWithDefaults(_sheetsService);
+    if (_authService.isAuthenticated) {
+      debugPrint('[FORM] Initializing form provider with defaults');
+      await _formProvider.initializeWithDefaults(_sheetsService);
+    }
   }
 
   Future<void> _promptSignIn() async {
@@ -73,15 +84,29 @@ class _StudentFormPageState extends State<StudentFormPage> {
     );
 
     if (shouldSignIn == true) {
-      debugPrint('Starting Google Sign-In process...');
+      debugPrint('[FORM] Starting Google Sign-In process...');
       final success = await _authService.signIn();
-      debugPrint('Google Sign-In result: $success');
+      debugPrint('[FORM] Google Sign-In result: $success, isAuthenticated: ${_authService.isAuthenticated}');
       
-      if (success) {
-        debugPrint('Sign-in successful, reinitializing form...');
-        await _initializeForm();
+      if (success && _authService.isAuthenticated) {
+        debugPrint('[FORM] Sign-in successful, initializing sheets service...');
+        if (!_sheetsService.isInitialized) {
+          await _sheetsService.initialize();
+        }
+        await _formProvider.initializeWithDefaults(_sheetsService);
       } else {
-        debugPrint('Sign-in failed: ${_authService.error}');
+        debugPrint('[FORM] Sign-in failed: ${_authService.error}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _authService.error ?? 'שגיאה בהתחברות',
+                textDirection: TextDirection.rtl,
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -136,6 +161,8 @@ class _StudentFormPageState extends State<StudentFormPage> {
       ),
       body: Consumer3<GoogleAuthService, GoogleSheetsService, FormProvider>(
         builder: (context, authService, sheetsService, formProvider, child) {
+          debugPrint('[UI] Building UI - isAuth: ${authService.isAuthenticated}, isLoading: ${authService.isLoading}, currentUser: ${authService.currentUser?.email}');
+          
           if (authService.isLoading || sheetsService.isLoading) {
             return const Center(
               child: Column(
@@ -172,11 +199,13 @@ class _StudentFormPageState extends State<StudentFormPage> {
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () async {
-                      debugPrint('Center login button pressed');
+                      debugPrint('[UI] Center login button pressed');
+                      debugPrint('[UI] Before sign-in - isAuth: ${authService.isAuthenticated}');
                       final success = await authService.signIn();
-                      debugPrint('Center sign-in result: $success');
+                      debugPrint('[UI] Center sign-in result: $success');
+                      debugPrint('[UI] After sign-in - isAuth: ${authService.isAuthenticated}');
                       if (success) {
-                        debugPrint('Center sign-in successful, reinitializing...');
+                        debugPrint('[UI] Center sign-in successful, reinitializing...');
                         await _initializeForm();
                       }
                     },

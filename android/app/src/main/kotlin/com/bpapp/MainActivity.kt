@@ -1,4 +1,4 @@
-package com.bpa.student_tracking.bpapp
+package com.bpapp
 
 import io.flutter.embedding.android.FlutterActivity
 
