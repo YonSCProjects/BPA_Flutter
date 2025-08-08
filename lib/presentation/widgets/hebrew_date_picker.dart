@@ -51,17 +51,27 @@ class HebrewDatePicker extends StatelessWidget {
   String _formatDateForDisplay(String dateString) {
     if (dateString.isEmpty) return '';
     
+    // Handle both formats: DD/MM/YYYY and YYYY-MM-DD
     try {
-      final date = DateTime.parse(dateString);
-      final formatter = DateFormat('dd/MM/yyyy');
-      return formatter.format(date);
+      DateTime date;
+      if (dateString.contains('/')) {
+        // Already in DD/MM/YYYY format
+        return dateString;
+      } else {
+        // Parse from YYYY-MM-DD format
+        date = DateTime.parse(dateString);
+        final formatter = DateFormat('dd/MM/yyyy');
+        return formatter.format(date);
+      }
     } catch (e) {
       return dateString;
     }
   }
 
   String _formatDateForStorage(DateTime date) {
-    final formatted = date.toString().substring(0, 10);
+    // Store in DD/MM/YYYY format to match Hebrew/Israeli convention
+    final formatter = DateFormat('dd/MM/yyyy');
+    final formatted = formatter.format(date);
     debugPrint('📅 [DATE] Storing date as: "$formatted"');
     return formatted;
   }
@@ -85,8 +95,20 @@ class HebrewDatePicker extends StatelessWidget {
     if (dateString.isEmpty) return null;
     
     try {
+      // Handle DD/MM/YYYY format
+      if (dateString.contains('/')) {
+        final parts = dateString.split('/');
+        if (parts.length == 3) {
+          final day = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final year = int.parse(parts[2]);
+          return DateTime(year, month, day);
+        }
+      }
+      // Fallback to standard parsing for YYYY-MM-DD
       return DateTime.parse(dateString);
     } catch (e) {
+      debugPrint('📅 [DATE] Error parsing date "$dateString": $e');
       return null;
     }
   }

@@ -20,7 +20,9 @@ class FormProvider extends ChangeNotifier {
     _setError(null);
 
     try {
-      final today = DateTime.now().toString().substring(0, 10);
+      // Format today's date as DD/MM/YYYY
+      final now = DateTime.now();
+      final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
       final nextClassNumber = await sheetsService.getNextClassNumber(today);
       
       _currentRecord = StudentRecord.empty().copyWith(
@@ -152,7 +154,9 @@ class FormProvider extends ChangeNotifier {
   }
 
   void resetForm() {
-    final today = DateTime.now().toString().substring(0, 10);
+    // Format today's date as DD/MM/YYYY
+    final now = DateTime.now();
+    final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
     _currentRecord = StudentRecord.empty().copyWith(date: today);
     _originalRecord = null;
     _isUpdateMode = false;

@@ -58,8 +58,12 @@ class StudentRecord {
   }
 
   factory StudentRecord.empty() {
+    // Format date as DD/MM/YYYY for Hebrew/Israeli convention
+    final now = DateTime.now();
+    final dateFormatted = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+    
     return StudentRecord(
-      date: DateTime.now().toString().substring(0, 10),
+      date: dateFormatted,
       studentName: '',
       className: '',
       classNumber: 1,
