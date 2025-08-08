@@ -104,8 +104,8 @@ class StudentRecord {
   }
 
   factory StudentRecord.fromSheetRow(List<dynamic> row) {
-    if (row.length < 12) {
-      throw ArgumentError('Sheet row must have at least 12 columns');
+    if (row.length < 11) {
+      throw ArgumentError('Sheet row must have at least 11 columns');
     }
     
     return StudentRecord(
@@ -120,7 +120,7 @@ class StudentRecord {
       personalGoal: int.tryParse(row[8]?.toString() ?? '0') ?? 0,
       bonus: int.tryParse(row[9]?.toString() ?? '0') ?? 0,
       totalScore: int.tryParse(row[10]?.toString() ?? '0') ?? 0,
-      comments: row[11]?.toString() ?? '',
+      comments: row.length > 11 ? (row[11]?.toString() ?? '') : '',
     );
   }
 

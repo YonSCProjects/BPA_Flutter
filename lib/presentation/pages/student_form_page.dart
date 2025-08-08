@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -21,6 +22,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
   late GoogleAuthService _authService;
   late GoogleSheetsService _sheetsService;
   late FormProvider _formProvider;
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -32,6 +34,12 @@ class _StudentFormPageState extends State<StudentFormPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeForm();
     });
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _initializeForm() async {
@@ -564,13 +572,21 @@ class _StudentFormPageState extends State<StudentFormPage> {
     );
   }
 
-  Future<void> _checkForExistingRecord(FormProvider formProvider) async {
-    debugPrint('🔄 [UI] _checkForExistingRecord called');
+  void _checkForExistingRecord(FormProvider formProvider) {
+    // Cancel any existing timer
+    _debounceTimer?.cancel();
+    
+    // Only proceed if all required fields are filled
     if (formProvider.canCheckForExistingRecord()) {
-      debugPrint('🔄 [UI] All fields ready, checking for existing record...');
-      await formProvider.checkForExistingRecord(_sheetsService);
+      debugPrint('🔄 [UI] Debouncing record check (0.5s delay)');
+      
+      // Set a new timer for 0.5 seconds
+      _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+        debugPrint('🔄 [UI] Executing debounced record check');
+        await formProvider.checkForExistingRecord(_sheetsService);
+      });
     } else {
-      debugPrint('🔄 [UI] Not all required fields filled yet');
+      debugPrint('🔄 [UI] Not all required fields filled - skipping check');
     }
   }
 
