@@ -98,6 +98,11 @@ class GoogleSheetsService extends ChangeNotifier {
     if (_spreadsheetId != null && _sheetId == null) {
       await _getSheetId();
     }
+    
+    // Ensure existing spreadsheet is protected
+    if (_spreadsheetId != null) {
+      await _protectSpreadsheet();
+    }
   }
 
   Future<void> _findExistingSpreadsheet() async {
@@ -146,6 +151,7 @@ class GoogleSheetsService extends ChangeNotifier {
       _spreadsheetId = response.spreadsheetId!;
       
       await _addHeaders();
+      await _protectSpreadsheet();
       
       debugPrint('Created new spreadsheet: $_spreadsheetId');
     } catch (e) {
@@ -247,6 +253,9 @@ class GoogleSheetsService extends ChangeNotifier {
       
       debugPrint('Successfully recovered BPApp spreadsheet from trash: $fileId');
       
+      // Apply protection to recovered spreadsheet
+      await _protectSpreadsheet();
+      
       // Set recovery success message
       _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! כל הנתונים שלך נשמרו.';
       
@@ -303,6 +312,57 @@ class GoogleSheetsService extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('Error formatting headers: $e');
+    }
+  }
+
+  Future<void> _protectSpreadsheet() async {
+    if (_sheetsApi == null || _spreadsheetId == null) return;
+
+    try {
+      // Get current user's email for setting edit permissions
+      final currentUser = _authService.currentUser;
+      if (currentUser?.email == null) {
+        debugPrint('Cannot protect sheet: no current user email');
+        return;
+      }
+
+      final userEmail = currentUser!.email;
+      debugPrint('Protecting spreadsheet with edit access for: $userEmail');
+
+      // Create protection request that makes the entire sheet read-only for everyone except the app/current user
+      final protectionRequest = sheets.Request(
+        addProtectedRange: sheets.AddProtectedRangeRequest(
+          protectedRange: sheets.ProtectedRange(
+            range: sheets.GridRange(
+              sheetId: _sheetId ?? 0,
+              startRowIndex: 0,
+              endRowIndex: 1000, // Protect many rows
+              startColumnIndex: 0,
+              endColumnIndex: hebrewHeaders.length,
+            ),
+            description: 'הגנה על גיליון BPApp - רק האפליקציה יכולה לערוך',
+            warningOnly: false, // Hard protection, not just warning
+            editors: sheets.Editors(
+              users: [userEmail], // Only the authenticated user (app) can edit
+              domainUsersCanEdit: false,
+            ),
+          ),
+        ),
+      );
+
+      final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
+        requests: [protectionRequest],
+      );
+
+      await _sheetsApi!.spreadsheets.batchUpdate(
+        batchUpdateRequest,
+        _spreadsheetId!,
+      );
+
+      debugPrint('Successfully protected BPApp spreadsheet - users cannot edit manually');
+    } catch (e) {
+      debugPrint('Warning: Could not protect spreadsheet (this is non-critical): $e');
+      // Don't throw error as protection is nice-to-have but not critical
     }
   }
 
@@ -546,35 +606,72 @@ class GoogleSheetsService extends ChangeNotifier {
         return 2; // Insert after header row
       }
 
-      final recordDate = DateTime.tryParse(record.date);
-      if (recordDate == null) return -1;
+      final recordDate = _parseDate(record.date);
+      if (recordDate == null) {
+        debugPrint('❌ [SORT] Could not parse record date: "${record.date}"');
+        return -1;
+      }
+
+      debugPrint('🔄 [SORT] Finding position for record: ${record.date} (class ${record.classNumber})');
+      debugPrint('🔄 [SORT] Parsed record date: $recordDate');
 
       for (int i = 0; i < response.values!.length; i++) {
         final row = response.values![i];
         if (row.isEmpty) continue;
 
-        final existingDate = DateTime.tryParse(row[0]?.toString() ?? '');
-        if (existingDate == null) continue;
+        final existingDateStr = row[0]?.toString() ?? '';
+        final existingDate = _parseDate(existingDateStr);
+        if (existingDate == null) {
+          debugPrint('⚠️ [SORT] Could not parse existing date: "$existingDateStr" at row ${i + 2}');
+          continue;
+        }
 
         final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
 
+        debugPrint('🔄 [SORT] Comparing with row ${i + 2}: $existingDateStr (class $existingClassNumber)');
+        
         // Compare dates first (primary sort)
         if (recordDate.isBefore(existingDate)) {
+          debugPrint('✅ [SORT] Found position by date: inserting at row ${i + 2}');
           return i + 2; // +2 because sheet is 1-indexed and has header row
         }
         
         // If same date, compare class numbers (secondary sort)
         if (recordDate.isAtSameMomentAs(existingDate)) {
           if (record.classNumber < existingClassNumber) {
+            debugPrint('✅ [SORT] Found position by class number: inserting at row ${i + 2}');
             return i + 2;
           }
         }
       }
 
+      debugPrint('🔄 [SORT] No position found, inserting at end');
       return -1; // Insert at end
     } catch (e) {
-      debugPrint('Error finding insert position: $e');
+      debugPrint('❌ [SORT] Error finding insert position: $e');
       return -1;
+    }
+  }
+
+  DateTime? _parseDate(String dateString) {
+    if (dateString.isEmpty) return null;
+    
+    try {
+      // Handle DD/MM/YYYY format (Hebrew/Israeli convention)
+      if (dateString.contains('/')) {
+        final parts = dateString.split('/');
+        if (parts.length == 3) {
+          final day = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final year = int.parse(parts[2]);
+          return DateTime(year, month, day);
+        }
+      }
+      // Fallback to standard parsing for YYYY-MM-DD
+      return DateTime.parse(dateString);
+    } catch (e) {
+      debugPrint('📅 [SORT] Error parsing date "$dateString": $e');
+      return null;
     }
   }
 
