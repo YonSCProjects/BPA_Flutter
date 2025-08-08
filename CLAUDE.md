@@ -12,16 +12,21 @@ The development is done with claude code on windows.
 - **Framework**: Flutter
 - **Authentication**: Google OAuth 2.0
 - **Backend**: Google Sheets API v4
+- **Local Storage**: SQLite database for offline-first data storage
 - **Language**: Complete Hebrew with RTL support
 - **Platform**: iOS and Android
 
 ## Core Functionality
 
-### Data Storage & Synchronization
+### Data Storage & Synchronization - OFFLINE-FIRST ARCHITECTURE
+- **SQLite Offline-First**: Local SQLite database provides instant data saves without network dependency
+- **Background Sync**: Automatic synchronization with Google Sheets when connectivity available
 - **Personal Google Sheets Integration**: Each user maintains private "BPApp" spreadsheet in Google Drive
+- **Spreadsheet Protection**: BPApp spreadsheets are read-only protected - only app can modify data
 - **Automatic Authentication**: App checks Google Drive connection on startup
-- **Real-time Sync**: Direct Google Sheets API integration for immediate data synchronization
+- **Real-time Sync**: Direct Google Sheets API integration with intelligent retry logic
 - **Individual User Sheets**: Each teacher gets dedicated spreadsheet ensuring privacy
+- **Data Safety**: Multiple fallback layers prevent data loss in any connectivity scenario
 
 ### Hebrew Input Fields (11 Total)
 
@@ -232,6 +237,7 @@ test/
 
 ### Core Service Architecture
 - **GoogleSheetsService**: Main service class in `lib/services/google_sheets_service.dart`
+- **LocalStorageService**: SQLite service class in `lib/services/local_storage_service.dart` 
 - **Authentication**: Integrated with GoogleAuthService for token management  
 - **Error Handling**: Comprehensive error handling with Hebrew error messages
 - **Rate Limiting**: Built-in handling for Google Sheets API limits (100 requests/100 seconds/user)
@@ -240,11 +246,14 @@ test/
 - `findExistingSpreadsheet()`: Searches user's Drive for "BPApp" spreadsheet
 - `createSpreadsheet()`: Creates new spreadsheet with Hebrew headers and RTL configuration
 - `findMatchingRecord()`: Implements 4-field matching logic (תאריך + שם התלמיד + שם הכיתה + מספר השיעור)
+- `saveRecord()`: **ENHANCED** - Offline-first saving with local SQLite then Google Sheets sync
 - `updateRecord()` / `appendRecord()`: Update existing or create new records with sorted insertion
 - `fetchAutocompleteData()`: Loads student/class suggestions for autocomplete
-- `_checkAndRecoverFromTrash()`: **NEW** - Automatically detects and recovers deleted BPApp spreadsheets
-- `_findInsertPosition()`: **NEW** - Intelligently determines chronological insertion point for new records
-- `_insertRecordAtPosition()`: **NEW** - Inserts records maintaining date/class number sorting
+- `syncPendingRecords()`: **NEW** - Background sync of locally stored records to Google Sheets
+- `_checkAndRecoverFromTrash()`: Automatically detects and recovers deleted BPApp spreadsheets
+- `_findInsertPosition()`: Intelligently determines chronological insertion point for new records
+- `_insertRecordAtPosition()`: Inserts records maintaining date/class number sorting
+- `_protectSpreadsheet()`: **NEW** - Makes BPApp spreadsheets read-only protected
 
 ### Authentication Flow
 ```dart
@@ -279,8 +288,114 @@ test/
 - **Session Persistence**: Improved secure credential storage and retrieval
 - **OAuth Flow**: Refined Google Sign-In process with better error recovery
 
+#### Spreadsheet Protection System
+- **Read-Only Protection**: BPApp spreadsheets automatically protected from manual user edits
+- **App-Only Access**: Only authenticated app can modify spreadsheet data
+- **Protection Applied**: New spreadsheets, existing spreadsheets, and recovered spreadsheets
+- **Hebrew Description**: Protection includes Hebrew description "הגנה על גיליון BPApp - רק האפליקציה יכולה לערוך"
+- **Non-Critical**: Graceful fallback if protection fails - app continues working normally
+
 ### Data Schema
 | תאריך | שם התלמיד | שם הכיתה | מספר השיעור | כניסה | שהייה | אווירה | ביצוע | מטרה אישית | בונוס | סה"כ | הערות |
+
+## SQLite Offline-First Storage
+
+### Architecture Overview
+The app implements a robust **offline-first data storage system** using SQLite to ensure teachers never lose data due to connectivity issues while maintaining all existing Google Sheets functionality.
+
+### Core Components
+
+#### LocalStorageService (`lib/services/local_storage_service.dart`)
+- **SQLite Database**: Cross-platform local database using `sqflite` package
+- **Self-Contained**: Zero external dependencies - everything built into APK
+- **ACID Compliance**: Reliable data integrity with proper transaction handling
+- **Sync Status Tracking**: Each record tracks pending/synced/failed status
+
+#### Database Schema
+```sql
+CREATE TABLE student_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,                    -- תאריך (DD/MM/YYYY format)
+  student_name TEXT NOT NULL,            -- שם התלמיד
+  class_name TEXT NOT NULL,              -- שם הכיתה  
+  class_number INTEGER NOT NULL,         -- מספר השיעור (1-7)
+  entry INTEGER NOT NULL,                -- כניסה (0-1)
+  staying INTEGER NOT NULL,              -- שהייה (0-3)
+  attitude INTEGER NOT NULL,             -- אווירה (0-2)
+  performance INTEGER NOT NULL,          -- ביצוע (0-2)
+  personal_goal INTEGER NOT NULL,        -- מטרה אישית (0-2)
+  bonus INTEGER NOT NULL,                -- בונוס (0-1)
+  total_score INTEGER NOT NULL,          -- סה"כ (calculated)
+  comments TEXT,                         -- הערות
+  sync_status TEXT DEFAULT 'pending',   -- Sync status tracking
+  created_at TEXT NOT NULL,              -- Local creation timestamp
+  synced_at TEXT NULL,                   -- Successful sync timestamp
+  retry_count INTEGER DEFAULT 0         -- Failed sync retry counter
+);
+```
+
+### Offline-First Data Flow
+
+#### Save Process (Enhanced saveRecord Method)
+```
+1. LOCAL SAVE FIRST → Instant confirmation to teacher
+   ↓
+2. ATTEMPT ONLINE SYNC → Background Google Sheets upload
+   ↓  
+3. UPDATE SYNC STATUS → Mark as synced/pending based on result
+   ↓
+4. RETURN SUCCESS → Based on local save (instant feedback)
+```
+
+#### Background Synchronization
+- **App Launch Sync**: Automatically syncs pending records when app starts
+- **Intelligent Retry**: Failed syncs retry with exponential backoff
+- **Rate Limited**: 100ms delays prevent API overwhelming
+- **Sorted Insertion**: Maintains chronological order during sync using existing intelligent sorting
+- **Autocomplete Update**: Synced records update autocomplete suggestions
+
+### Key Features
+
+#### Instant Teacher Feedback
+- **Local Save First**: Data saved immediately to SQLite regardless of network
+- **No Network Wait**: Teachers get instant confirmation without connectivity delays
+- **Progress Indicators**: Clear visual feedback about save and sync status
+- **Offline Capable**: App fully functional without internet connection
+
+#### Data Safety & Reliability
+- **Multiple Fallbacks**: Local storage → Google Sheets → Emergency fallback
+- **Zero Data Loss**: Records preserved locally even during complete network failure  
+- **4-Field Matching**: Same matching logic as Google Sheets for consistency
+- **Automatic Recovery**: Pending records sync automatically when connectivity returns
+
+#### Feature Flags & Safety
+```dart
+// Safe rollback capability
+static const bool _offlineFirstEnabled = true;
+static const bool _offlineStorageEnabled = true;
+```
+
+#### Service Methods
+- `saveRecord()`: Enhanced offline-first save with local SQLite then background sync
+- `getPendingRecords()`: Retrieve all locally stored records awaiting sync
+- `syncPendingRecords()`: Background batch sync to Google Sheets with intelligent sorting
+- `getSyncStatus()`: Get counts of synced/pending/failed records for UI
+- `manualSync()`: Manual sync trigger for user control
+- `markAsSynced()`: Update record status after successful Google Sheets sync
+- `cleanupOldRecords()`: Remove old synced records (30+ days) to manage storage
+
+### Integration Benefits
+- ✅ **Zero Breaking Changes**: All existing FormProvider, UI, and logic work identically
+- ✅ **Same Interface**: `saveRecord()` method maintains exact same boolean return contract
+- ✅ **Enhanced Reliability**: Network issues no longer cause data loss
+- ✅ **Graceful Degradation**: Falls back to online-only if local storage fails
+- ✅ **Performance**: Instant saves improve user experience significantly
+
+### Cross-Platform Support
+- **Android**: Native SQLite integration via Android SDK
+- **iOS**: Native SQLite integration via iOS SDK  
+- **Flutter**: `sqflite` package provides unified API across platforms
+- **Self-Contained**: All dependencies compiled into APK/IPA - no external requirements
 
 ## Language & Localization
 
@@ -479,19 +594,22 @@ dependencies:
   flutter:
     sdk: flutter
   google_sign_in: ^6.1.5           # Google OAuth authentication
-  googleapis: ^11.4.0              # Google Sheets API client  
+  googleapis: ^11.4.0              # Google Sheets API client
+  googleapis_auth: ^1.4.1          # Google APIs authentication library  
   provider: ^6.0.5                 # State management
   flutter_secure_storage: ^9.0.0   # Secure token storage
-  intl: ^0.18.1                    # Hebrew localization
   shared_preferences: ^2.2.2       # Local app preferences
+  sqflite: ^2.3.0                  # SQLite local database for offline storage
+  path: ^1.8.3                     # File path utilities for database
+  intl: ^0.20.2                    # Hebrew localization support
   http: ^1.1.0                     # HTTP client for API calls
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0           # Linting rules
-  mockito: ^5.4.2                 # Mocking for tests
-  build_runner: ^2.4.7            # Code generation
+  flutter_lints: ^5.0.0            # Linting rules
+  mockito: ^5.4.2                  # Mocking for tests
+  build_runner: ^2.4.7             # Code generation
 ```
 
 ## Deployment
@@ -606,7 +724,63 @@ Current versions in pubspec.yaml:
 - Flutter SDK: ^3.8.1 (Compatible with Flutter 3.32.6 stable)
 - Google APIs: googleapis ^11.4.0, google_sign_in ^6.1.5, googleapis_auth ^1.4.1
 - State Management: provider ^6.0.5
-- Storage: flutter_secure_storage ^9.0.0, shared_preferences ^2.2.2
+- Storage: flutter_secure_storage ^9.0.0, shared_preferences ^2.2.2, **sqflite ^2.3.0, path ^1.8.3**
 - Localization: intl ^0.20.2, flutter_localizations (SDK)
 - Development: flutter_lints ^5.0.0, mockito ^5.4.2, build_runner ^2.4.7
 - HTTP: http ^1.1.0
+
+## Current Implementation Status - LATEST (August 2025)
+
+### ✅ COMPLETED FEATURES
+1. **SQLite Offline-First Storage System**
+   - LocalStorageService with comprehensive SQLite database
+   - Offline-first saving with instant teacher feedback
+   - Background sync with intelligent retry logic
+   - Zero breaking changes to existing functionality
+
+2. **Enhanced Google Sheets Integration**
+   - Spreadsheet protection (read-only for users, app-only editing)
+   - Intelligent record sorting and insertion (chronological by date, secondary by class number)
+   - Automatic trash recovery system
+   - Enhanced authentication and error handling with Hebrew messages
+
+3. **Data Safety & Reliability**
+   - Multiple fallback layers prevent any data loss scenarios
+   - Same 4-field matching logic maintained across local and remote storage
+   - Feature flags allow safe rollback if needed
+   - Graceful degradation when components fail
+
+4. **Self-Contained Installation**
+   - All SQLite functionality built into APK - zero external dependencies
+   - Cross-platform support (Android/iOS) with native SQLite integration
+   - No additional apps or setup required for end users
+
+### 🔧 CURRENT ARCHITECTURE
+```
+Teacher Input → FormProvider → GoogleSheetsService.saveRecord()
+                                    ↓
+                             [ENHANCED METHOD]
+                                    ↓
+                    1. LocalStorageService.saveRecord() (Instant)
+                                    ↓
+                    2. Background Google Sheets sync
+                                    ↓
+                    3. Update sync status (pending/synced/failed)
+                                    ↓
+                    4. Return success (based on local save)
+```
+
+### 📁 KEY FILES TO UNDERSTAND
+- `lib/services/local_storage_service.dart` - SQLite offline storage implementation
+- `lib/services/google_sheets_service.dart` - Enhanced with offline-first saving
+- `lib/presentation/providers/form_provider.dart` - Unchanged, works with enhanced services
+- `lib/data/models/student_record.dart` - Core data model used by both local and remote storage
+- `pubspec.yaml` - Updated dependencies including sqflite and path packages
+
+### 🚀 READY FOR PRODUCTION
+The BPApp is now production-ready with enterprise-grade offline capabilities:
+- ✅ Teachers never lose data due to connectivity issues
+- ✅ Instant save confirmation improves user experience  
+- ✅ Background sync maintains Google Sheets integration
+- ✅ Same familiar interface with enhanced reliability
+- ✅ Self-contained APK requires no external setup from users
