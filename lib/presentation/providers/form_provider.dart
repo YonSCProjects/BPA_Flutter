@@ -85,7 +85,12 @@ class FormProvider extends ChangeNotifier {
   }
 
   Future<void> checkForExistingRecord(GoogleSheetsService sheetsService) async {
-    if (!canCheckForExistingRecord()) return;
+    if (!canCheckForExistingRecord()) {
+      debugPrint('🔄 [FORM] Cannot check for existing record - missing required fields');
+      return;
+    }
+
+    debugPrint('🔄 [FORM] Checking for existing record with current data...');
 
     try {
       final existingRecord = await sheetsService.findMatchingRecord(_currentRecord);
@@ -95,17 +100,18 @@ class FormProvider extends ChangeNotifier {
         _currentRecord = existingRecord;
         _isUpdateMode = true;
         
-        debugPrint('Found existing record, switched to update mode');
+        debugPrint('✅ [FORM] Found existing record, switched to UPDATE mode');
+        debugPrint('✅ [FORM] Existing record: ${existingRecord.toString()}');
       } else {
         _originalRecord = null;
         _isUpdateMode = false;
         
-        debugPrint('No existing record found, staying in create mode');
+        debugPrint('🆕 [FORM] No existing record found, staying in CREATE mode');
       }
       
       notifyListeners();
     } catch (e) {
-      debugPrint('Error checking for existing record: $e');
+      debugPrint('❌ [FORM] Error checking for existing record: $e');
     }
   }
 

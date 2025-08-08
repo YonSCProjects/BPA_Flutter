@@ -349,6 +349,8 @@ class GoogleSheetsService extends ChangeNotifier {
   Future<StudentRecord?> findMatchingRecord(StudentRecord record) async {
     if (_sheetsApi == null || _spreadsheetId == null) return null;
 
+    debugPrint('🔍 [MATCH] Looking for: Date="${record.date}", Student="${record.studentName}", Class="${record.className}", ClassNum=${record.classNumber}');
+
     try {
       final response = await _sheetsApi!.spreadsheets.values.get(
         _spreadsheetId!,
@@ -356,31 +358,51 @@ class GoogleSheetsService extends ChangeNotifier {
       );
 
       if (response.values != null) {
+        debugPrint('🔍 [MATCH] Found ${response.values!.length} existing rows to check');
+        
         for (int i = 0; i < response.values!.length; i++) {
           final row = response.values![i];
           if (row.length >= 4) {
-            final existingDate = row[0]?.toString();
-            final existingStudent = row[1]?.toString();
-            final existingClass = row[2]?.toString();
-            final existingClassNumber = int.tryParse(row[3]?.toString() ?? '');
+            final existingDate = row[0]?.toString().trim() ?? '';
+            final existingStudent = row[1]?.toString().trim() ?? '';
+            final existingClass = row[2]?.toString().trim() ?? '';
+            final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
 
-            if (existingDate == record.date &&
-                existingStudent == record.studentName &&
-                existingClass == record.className &&
-                existingClassNumber == record.classNumber) {
+            debugPrint('🔍 [MATCH] Row ${i + 2}: Date="$existingDate", Student="$existingStudent", Class="$existingClass", ClassNum=$existingClassNumber');
+
+            // Normalize strings for comparison
+            final recordDateNorm = record.date.trim();
+            final recordStudentNorm = record.studentName.trim();
+            final recordClassNorm = record.className.trim();
+
+            final dateMatch = existingDate == recordDateNorm;
+            final studentMatch = existingStudent == recordStudentNorm;
+            final classMatch = existingClass == recordClassNorm;
+            final classNumberMatch = existingClassNumber == record.classNumber;
+
+            debugPrint('🔍 [MATCH] Comparison: Date=$dateMatch, Student=$studentMatch, Class=$classMatch, ClassNum=$classNumberMatch');
+
+            if (dateMatch && studentMatch && classMatch && classNumberMatch) {
+              debugPrint('✅ [MATCH] FOUND EXACT MATCH at row ${i + 2}!');
               
               try {
-                return StudentRecord.fromSheetRow(row);
+                final existingRecord = StudentRecord.fromSheetRow(row);
+                debugPrint('✅ [MATCH] Successfully parsed existing record');
+                return existingRecord;
               } catch (e) {
-                debugPrint('Error parsing existing record: $e');
+                debugPrint('❌ [MATCH] Error parsing existing record: $e');
                 continue;
               }
             }
           }
         }
+        
+        debugPrint('❌ [MATCH] No matching record found');
+      } else {
+        debugPrint('❌ [MATCH] No existing data found');
       }
     } catch (e) {
-      debugPrint('Error finding matching record: $e');
+      debugPrint('❌ [MATCH] Error finding matching record: $e');
     }
 
     return null;
@@ -392,17 +414,23 @@ class GoogleSheetsService extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
 
+    debugPrint('💾 [SAVE] Starting save process...');
+
     try {
       final recordWithScore = record.withCalculatedScore();
+      debugPrint('💾 [SAVE] Record with score: ${recordWithScore.toString()}');
+      
       final existingRecord = await findMatchingRecord(recordWithScore);
 
       bool success;
       if (existingRecord != null) {
+        debugPrint('💾 [SAVE] Existing record found - UPDATING existing row');
         success = await _updateRecord(recordWithScore);
-        debugPrint('Updated existing record');
+        debugPrint(success ? '✅ [SAVE] Updated existing record successfully' : '❌ [SAVE] Failed to update existing record');
       } else {
+        debugPrint('💾 [SAVE] No existing record - CREATING new row');
         success = await _appendRecord(recordWithScore);
-        debugPrint('Created new record');
+        debugPrint(success ? '✅ [SAVE] Created new record successfully' : '❌ [SAVE] Failed to create new record');
       }
 
       if (success) {
