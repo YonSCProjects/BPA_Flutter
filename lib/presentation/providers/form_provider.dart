@@ -97,11 +97,23 @@ class FormProvider extends ChangeNotifier {
       
       if (existingRecord != null) {
         _originalRecord = existingRecord;
-        _currentRecord = existingRecord;
+        
+        // Only update the score fields, keep the key fields as user entered them
+        _currentRecord = _currentRecord.copyWith(
+          entry: existingRecord.entry,
+          staying: existingRecord.staying,
+          attitude: existingRecord.attitude,
+          performance: existingRecord.performance,
+          personalGoal: existingRecord.personalGoal,
+          bonus: existingRecord.bonus,
+          comments: existingRecord.comments,
+          totalScore: existingRecord.totalScore,
+        );
+        
         _isUpdateMode = true;
         
         debugPrint('✅ [FORM] Found existing record, switched to UPDATE mode');
-        debugPrint('✅ [FORM] Existing record: ${existingRecord.toString()}');
+        debugPrint('✅ [FORM] Populated score fields from existing record');
       } else {
         _originalRecord = null;
         _isUpdateMode = false;

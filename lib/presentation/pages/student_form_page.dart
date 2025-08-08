@@ -336,7 +336,10 @@ class _StudentFormPageState extends State<StudentFormPage> {
     return HebrewDatePicker(
       label: 'תאריך',
       value: formProvider.currentRecord.date,
-      onChanged: (date) => formProvider.updateField('date', date),
+      onChanged: (date) {
+        formProvider.updateField('date', date);
+        _checkForExistingRecord(formProvider);
+      },
       isRequired: true,
     );
   }
@@ -345,7 +348,10 @@ class _StudentFormPageState extends State<StudentFormPage> {
     return HebrewTextField(
       label: 'שם התלמיד',
       value: formProvider.currentRecord.studentName,
-      onChanged: (value) => formProvider.updateField('studentName', value),
+      onChanged: (value) {
+        formProvider.updateField('studentName', value);
+        _checkForExistingRecord(formProvider);
+      },
       suggestions: _sheetsService.getStudentSuggestions,
       isRequired: true,
       onSuggestionSelected: (suggestion) {
@@ -359,7 +365,10 @@ class _StudentFormPageState extends State<StudentFormPage> {
     return HebrewTextField(
       label: 'שם הכיתה',
       value: formProvider.currentRecord.className,
-      onChanged: (value) => formProvider.updateField('className', value),
+      onChanged: (value) {
+        formProvider.updateField('className', value);
+        _checkForExistingRecord(formProvider);
+      },
       suggestions: _sheetsService.getClassSuggestions,
       isRequired: true,
       onSuggestionSelected: (suggestion) {

@@ -368,19 +368,32 @@ class GoogleSheetsService extends ChangeNotifier {
             final existingClass = row[2]?.toString().trim() ?? '';
             final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
 
-            debugPrint('🔍 [MATCH] Row ${i + 2}: Date="$existingDate", Student="$existingStudent", Class="$existingClass", ClassNum=$existingClassNumber');
-
             // Normalize strings for comparison
             final recordDateNorm = record.date.trim();
             final recordStudentNorm = record.studentName.trim();
             final recordClassNorm = record.className.trim();
 
+            // Detailed comparison with exact values shown
             final dateMatch = existingDate == recordDateNorm;
             final studentMatch = existingStudent == recordStudentNorm;
             final classMatch = existingClass == recordClassNorm;
             final classNumberMatch = existingClassNumber == record.classNumber;
 
-            debugPrint('🔍 [MATCH] Comparison: Date=$dateMatch, Student=$studentMatch, Class=$classMatch, ClassNum=$classNumberMatch');
+            if (!dateMatch || !studentMatch || !classMatch || !classNumberMatch) {
+              debugPrint('🔍 [MATCH] Row ${i + 2} comparison:');
+              if (!dateMatch) {
+                debugPrint('  ❌ Date: "$existingDate" ≠ "$recordDateNorm"');
+              }
+              if (!studentMatch) {
+                debugPrint('  ❌ Student: "$existingStudent" ≠ "$recordStudentNorm"');
+              }
+              if (!classMatch) {
+                debugPrint('  ❌ Class: "$existingClass" ≠ "$recordClassNorm"');
+              }
+              if (!classNumberMatch) {
+                debugPrint('  ❌ ClassNum: $existingClassNumber ≠ ${record.classNumber}');
+              }
+            }
 
             if (dateMatch && studentMatch && classMatch && classNumberMatch) {
               debugPrint('✅ [MATCH] FOUND EXACT MATCH at row ${i + 2}!');
