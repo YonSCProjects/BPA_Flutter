@@ -5,6 +5,7 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import '../data/models/student_record.dart';
 import '../data/models/autocomplete_data.dart';
 import 'google_auth_service.dart';
+import 'local_storage_service.dart';
 
 class GoogleSheetsService extends ChangeNotifier {
   static const String spreadsheetName = 'BPApp';
@@ -26,6 +27,7 @@ class GoogleSheetsService extends ChangeNotifier {
   ];
 
   final GoogleAuthService _authService;
+  final LocalStorageService _localStorageService = LocalStorageService();
   
   sheets.SheetsApi? _sheetsApi;
   drive.DriveApi? _driveApi;
@@ -35,6 +37,9 @@ class GoogleSheetsService extends ChangeNotifier {
   String? _error;
   String? _recoveryMessage;
   AutocompleteData _autocompleteData = AutocompleteData.empty();
+
+  // Feature flag for safe rollback
+  static const bool _offlineFirstEnabled = true;
 
   GoogleSheetsService(this._authService) {
     _authService.addListener(_onAuthStateChanged);
@@ -53,6 +58,16 @@ class GoogleSheetsService extends ChangeNotifier {
     _setRecoveryMessage(null);
 
     try {
+      // Initialize local storage first (always try this)
+      if (_offlineFirstEnabled) {
+        try {
+          await _localStorageService.initialize();
+          debugPrint('✅ [OFFLINE] Local storage initialized');
+        } catch (e) {
+          debugPrint('⚠️ [OFFLINE] Local storage failed, continuing with online-only: $e');
+        }
+      }
+
       if (!_authService.isAuthenticated) {
         _setError('לא מחובר לגוגל - נדרשת התחברות');
         return false;
@@ -61,6 +76,11 @@ class GoogleSheetsService extends ChangeNotifier {
       await _initializeApis();
       await _findOrCreateSpreadsheet();
       await _loadAutocompleteData();
+      
+      // Sync any pending local records
+      if (_offlineFirstEnabled && _localStorageService.isInitialized) {
+        _syncPendingRecordsInBackground();
+      }
       
       debugPrint('GoogleSheetsService initialized successfully');
       return true;
@@ -494,42 +514,112 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   Future<bool> saveRecord(StudentRecord record) async {
-    if (_sheetsApi == null || _spreadsheetId == null) return false;
-
     _setLoading(true);
     _setError(null);
 
-    debugPrint('💾 [SAVE] Starting save process...');
+    debugPrint('💾 [SAVE] Starting offline-first save process...');
 
     try {
       final recordWithScore = record.withCalculatedScore();
-      debugPrint('💾 [SAVE] Record with score: ${recordWithScore.toString()}');
       
-      final existingRecord = await findMatchingRecord(recordWithScore);
+      // Step 1: ALWAYS save locally first (instant feedback to teacher)
+      bool localSaveSuccess = false;
+      if (_offlineFirstEnabled && _localStorageService.isInitialized) {
+        try {
+          await _localStorageService.saveRecord(recordWithScore);
+          localSaveSuccess = true;
+          debugPrint('✅ [SAVE] Saved locally - teacher has instant confirmation');
+        } catch (e) {
+          debugPrint('⚠️ [SAVE] Local save failed, continuing with online-only: $e');
+        }
+      }
+
+      // Step 2: Attempt online sync (preserve original logic)
+      bool onlineSuccess = false;
+      if (_sheetsApi != null && _spreadsheetId != null) {
+        try {
+          onlineSuccess = await _originalSaveRecord(recordWithScore);
+          
+          if (onlineSuccess) {
+            // Mark as synced in local storage
+            if (localSaveSuccess) {
+              await _localStorageService.markAsSynced(recordWithScore);
+            }
+            
+            // Update autocomplete data (preserve original behavior)
+            _autocompleteData = _autocompleteData.addFromRecord(recordWithScore);
+            notifyListeners();
+            
+            debugPrint('✅ [SAVE] Online sync successful');
+          } else {
+            // Mark as pending sync in local storage
+            if (localSaveSuccess) {
+              await _localStorageService.markAsPendingSync(recordWithScore);
+            }
+            debugPrint('⏳ [SAVE] Online sync failed, marked for retry');
+          }
+        } catch (e) {
+          debugPrint('❌ [SAVE] Online sync error: $e');
+          if (localSaveSuccess) {
+            await _localStorageService.markAsPendingSync(recordWithScore);
+          }
+        }
+      } else {
+        debugPrint('⚠️ [SAVE] No online connection, data saved locally only');
+        if (localSaveSuccess) {
+          await _localStorageService.markAsPendingSync(recordWithScore);
+        }
+      }
+
+      // Step 3: Return success based on strategy
+      if (_offlineFirstEnabled && localSaveSuccess) {
+        // Offline-first: Success if saved locally (teacher gets instant feedback)
+        return true;
+      } else {
+        // Fallback: Original behavior (only success if online sync worked)
+        return onlineSuccess;
+      }
+
+    } catch (e) {
+      _setError('שגיאה בשמירת הרשומה: ${e.toString()}');
+      debugPrint('❌ [SAVE] Critical error in save process: $e');
+      
+      // Emergency fallback: Try original save method
+      if (_sheetsApi != null && _spreadsheetId != null) {
+        debugPrint('🚨 [SAVE] Attempting emergency fallback to original save method');
+        return await _originalSaveRecord(record.withCalculatedScore());
+      }
+      
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Original save record logic preserved for fallback
+  Future<bool> _originalSaveRecord(StudentRecord record) async {
+    debugPrint('💾 [SAVE] Using original save logic');
+    
+    try {
+      debugPrint('💾 [SAVE] Record with score: ${record.toString()}');
+      
+      final existingRecord = await findMatchingRecord(record);
 
       bool success;
       if (existingRecord != null) {
         debugPrint('💾 [SAVE] Existing record found - UPDATING existing row');
-        success = await _updateRecord(recordWithScore);
+        success = await _updateRecord(record);
         debugPrint(success ? '✅ [SAVE] Updated existing record successfully' : '❌ [SAVE] Failed to update existing record');
       } else {
         debugPrint('💾 [SAVE] No existing record - CREATING new row');
-        success = await _appendRecord(recordWithScore);
+        success = await _appendRecord(record);
         debugPrint(success ? '✅ [SAVE] Created new record successfully' : '❌ [SAVE] Failed to create new record');
-      }
-
-      if (success) {
-        _autocompleteData = _autocompleteData.addFromRecord(recordWithScore);
-        notifyListeners();
       }
 
       return success;
     } catch (e) {
-      _setError('שגיאה בשמירת הרשומה: ${e.toString()}');
-      debugPrint('Error saving record: $e');
+      debugPrint('❌ [SAVE] Original save method error: $e');
       return false;
-    } finally {
-      _setLoading(false);
     }
   }
 
@@ -835,9 +925,132 @@ class GoogleSheetsService extends ChangeNotifier {
     _setRecoveryMessage(null);
   }
 
+  /// Sync pending records in background (non-blocking)
+  void _syncPendingRecordsInBackground() {
+    if (!_offlineFirstEnabled || !_localStorageService.isInitialized) return;
+
+    // Run sync in background without blocking initialization
+    Future.microtask(() async {
+      try {
+        await syncPendingRecords();
+      } catch (e) {
+        debugPrint('🔄 [SYNC] Background sync failed: $e');
+      }
+    });
+  }
+
+  /// Sync all pending records with Google Sheets
+  Future<void> syncPendingRecords() async {
+    if (!_offlineFirstEnabled || !_localStorageService.isInitialized) {
+      debugPrint('🔄 [SYNC] Sync not available - offline storage not initialized');
+      return;
+    }
+
+    if (_sheetsApi == null || _spreadsheetId == null) {
+      debugPrint('🔄 [SYNC] Sync not available - Google Sheets not initialized');
+      return;
+    }
+
+    try {
+      final pendingRecords = await _localStorageService.getPendingRecords();
+      
+      if (pendingRecords.isEmpty) {
+        debugPrint('🔄 [SYNC] No pending records to sync');
+        return;
+      }
+
+      debugPrint('🔄 [SYNC] Starting sync of ${pendingRecords.length} pending records');
+      int successCount = 0;
+      int failCount = 0;
+
+      for (final localRecord in pendingRecords) {
+        try {
+          // Convert back to StudentRecord for syncing
+          final studentRecord = StudentRecord(
+            date: localRecord.date,
+            studentName: localRecord.studentName,
+            className: localRecord.className,
+            classNumber: localRecord.classNumber,
+            entry: localRecord.entry,
+            staying: localRecord.staying,
+            attitude: localRecord.attitude,
+            performance: localRecord.performance,
+            personalGoal: localRecord.personalGoal,
+            bonus: localRecord.bonus,
+            comments: localRecord.comments,
+            totalScore: localRecord.totalScore,
+          );
+
+          final success = await _originalSaveRecord(studentRecord);
+          
+          if (success) {
+            await _localStorageService.markAsSynced(studentRecord);
+            successCount++;
+            debugPrint('✅ [SYNC] Synced record: ${studentRecord.getMatchingKey()}');
+            
+            // Update autocomplete data
+            _autocompleteData = _autocompleteData.addFromRecord(studentRecord);
+          } else {
+            await _localStorageService.incrementRetryCount(localRecord);
+            failCount++;
+            debugPrint('❌ [SYNC] Failed to sync record: ${studentRecord.getMatchingKey()}');
+          }
+          
+          // Small delay to avoid overwhelming the API
+          await Future.delayed(const Duration(milliseconds: 100));
+          
+        } catch (e) {
+          await _localStorageService.incrementRetryCount(localRecord);
+          failCount++;
+          debugPrint('❌ [SYNC] Error syncing record ${localRecord.getMatchingKey()}: $e');
+        }
+      }
+
+      debugPrint('🔄 [SYNC] Sync complete: $successCount success, $failCount failed');
+      
+      if (successCount > 0) {
+        notifyListeners(); // Notify UI of autocomplete data updates
+      }
+      
+    } catch (e) {
+      debugPrint('❌ [SYNC] Critical sync error: $e');
+    }
+  }
+
+  /// Get sync status information for UI
+  Future<Map<String, int>> getSyncStatus() async {
+    if (!_offlineFirstEnabled || !_localStorageService.isInitialized) {
+      return {'synced': 0, 'pending': 0, 'failed': 0};
+    }
+
+    try {
+      final counts = await _localStorageService.getSyncStatusCounts();
+      return {
+        'synced': counts[SyncStatus.synced] ?? 0,
+        'pending': counts[SyncStatus.pending] ?? 0,
+        'failed': counts[SyncStatus.failed] ?? 0,
+      };
+    } catch (e) {
+      debugPrint('❌ [SYNC] Error getting sync status: $e');
+      return {'synced': 0, 'pending': 0, 'failed': 0};
+    }
+  }
+
+  /// Manual sync trigger for UI
+  Future<bool> manualSync() async {
+    try {
+      await syncPendingRecords();
+      return true;
+    } catch (e) {
+      debugPrint('❌ [SYNC] Manual sync failed: $e');
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _authService.removeListener(_onAuthStateChanged);
+    _localStorageService.dispose();
     super.dispose();
   }
 }
