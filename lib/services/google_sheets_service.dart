@@ -364,6 +364,11 @@ class GoogleSheetsService extends ChangeNotifier {
 
       if (response.values != null) {
         debugPrint('🔍 [MATCH] Found ${response.values!.length} existing rows to check');
+        debugPrint('🔍 [MATCH] Raw spreadsheet data:');
+        for (int i = 0; i < response.values!.length; i++) {
+          debugPrint('🔍 [MATCH] Raw row ${i + 2}: ${response.values![i]}');
+        }
+        debugPrint('🔍 [MATCH] ==========================================');
         
         for (int i = 0; i < response.values!.length; i++) {
           final row = response.values![i];
@@ -390,20 +395,16 @@ class GoogleSheetsService extends ChangeNotifier {
             final classMatch = existingClass == recordClassNorm;
             final classNumberMatch = existingClassNumber == record.classNumber;
 
+            debugPrint('🔍 [MATCH] Row ${i + 2} detailed comparison:');
+            debugPrint('  📅 Date: "$existingDate" == "$recordDateNorm" ? $dateMatch');
+            debugPrint('  👤 Student: "$existingStudent" == "$recordStudentNorm" ? $studentMatch');
+            debugPrint('  🏫 Class: "$existingClass" == "$recordClassNorm" ? $classMatch');
+            debugPrint('  🔢 ClassNum: $existingClassNumber == ${record.classNumber} ? $classNumberMatch');
+            
             if (!dateMatch || !studentMatch || !classMatch || !classNumberMatch) {
-              debugPrint('🔍 [MATCH] Row ${i + 2} comparison:');
-              if (!dateMatch) {
-                debugPrint('  ❌ Date: "$existingDate" ≠ "$recordDateNorm"');
-              }
-              if (!studentMatch) {
-                debugPrint('  ❌ Student: "$existingStudent" ≠ "$recordStudentNorm"');
-              }
-              if (!classMatch) {
-                debugPrint('  ❌ Class: "$existingClass" ≠ "$recordClassNorm"');
-              }
-              if (!classNumberMatch) {
-                debugPrint('  ❌ ClassNum: $existingClassNumber ≠ ${record.classNumber}');
-              }
+              debugPrint('  ❌ Row ${i + 2}: NO MATCH');
+            } else {
+              debugPrint('  ✅ Row ${i + 2}: EXACT MATCH FOUND!');
             }
 
             if (dateMatch && studentMatch && classMatch && classNumberMatch) {
