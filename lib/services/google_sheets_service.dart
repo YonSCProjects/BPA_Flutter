@@ -349,7 +349,12 @@ class GoogleSheetsService extends ChangeNotifier {
   Future<StudentRecord?> findMatchingRecord(StudentRecord record) async {
     if (_sheetsApi == null || _spreadsheetId == null) return null;
 
-    debugPrint('🔍 [MATCH] Looking for: Date="${record.date}", Student="${record.studentName}", Class="${record.className}", ClassNum=${record.classNumber}');
+    debugPrint('🔍 [MATCH] ========== STARTING RECORD MATCH ==========');
+    debugPrint('🔍 [MATCH] Looking for:');
+    debugPrint('🔍 [MATCH]   Date="${record.date}" (length=${record.date.length})');
+    debugPrint('🔍 [MATCH]   Student="${record.studentName}" (length=${record.studentName.length})');
+    debugPrint('🔍 [MATCH]   Class="${record.className}" (length=${record.className.length})');
+    debugPrint('🔍 [MATCH]   ClassNum=${record.classNumber}');
 
     try {
       final response = await _sheetsApi!.spreadsheets.values.get(
@@ -367,6 +372,12 @@ class GoogleSheetsService extends ChangeNotifier {
             final existingStudent = row[1]?.toString().trim() ?? '';
             final existingClass = row[2]?.toString().trim() ?? '';
             final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
+            
+            debugPrint('🔍 [MATCH] --- Row ${i + 2} ---');
+            debugPrint('🔍 [MATCH]   Date="$existingDate" (len=${existingDate.length})');
+            debugPrint('🔍 [MATCH]   Student="$existingStudent" (len=${existingStudent.length})');
+            debugPrint('🔍 [MATCH]   Class="$existingClass" (len=${existingClass.length})');
+            debugPrint('🔍 [MATCH]   ClassNum=$existingClassNumber');
 
             // Normalize strings for comparison
             final recordDateNorm = record.date.trim();

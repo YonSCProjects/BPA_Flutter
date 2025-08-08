@@ -61,7 +61,9 @@ class HebrewDatePicker extends StatelessWidget {
   }
 
   String _formatDateForStorage(DateTime date) {
-    return date.toString().substring(0, 10);
+    final formatted = date.toString().substring(0, 10);
+    debugPrint('📅 [DATE] Storing date as: "$formatted"');
+    return formatted;
   }
 
   Future<void> _selectDate(BuildContext context) async {

@@ -565,8 +565,12 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Future<void> _checkForExistingRecord(FormProvider formProvider) async {
+    debugPrint('🔄 [UI] _checkForExistingRecord called');
     if (formProvider.canCheckForExistingRecord()) {
+      debugPrint('🔄 [UI] All fields ready, checking for existing record...');
       await formProvider.checkForExistingRecord(_sheetsService);
+    } else {
+      debugPrint('🔄 [UI] Not all required fields filled yet');
     }
   }
 
