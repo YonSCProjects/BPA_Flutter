@@ -319,6 +319,9 @@ class _StudentFormPageState extends State<StudentFormPage> {
                   _buildScoreFields(formProvider),
                   const SizedBox(height: 24),
                   _buildCommentsField(formProvider),
+                  const SizedBox(height: 24),
+                  _buildScoreDisplay(formProvider),
+                  const SizedBox(height: 100), // Extra space for keyboard
                 ],
               ),
             ),
@@ -482,6 +485,23 @@ class _StudentFormPageState extends State<StudentFormPage> {
     );
   }
 
+  Widget _buildScoreDisplay(FormProvider formProvider) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      child: ScoreDisplay(
+        totalScore: formProvider.currentRecord.calculateTotalScore(),
+        maxScore: 11,
+      ),
+    );
+  }
+
   Widget _buildBottomSection(FormProvider formProvider) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -495,11 +515,6 @@ class _StudentFormPageState extends State<StudentFormPage> {
       ),
       child: Column(
         children: [
-          ScoreDisplay(
-            totalScore: formProvider.currentRecord.calculateTotalScore(),
-            maxScore: 11,
-          ),
-          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
