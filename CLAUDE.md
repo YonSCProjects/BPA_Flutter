@@ -238,10 +238,13 @@ test/
 
 ### Key Service Methods
 - `findExistingSpreadsheet()`: Searches user's Drive for "BPApp" spreadsheet
-- `createSpreadsheet()`: Creates new spreadsheet with Hebrew headers
+- `createSpreadsheet()`: Creates new spreadsheet with Hebrew headers and RTL configuration
 - `findMatchingRecord()`: Implements 4-field matching logic (תאריך + שם התלמיד + שם הכיתה + מספר השיעור)
-- `updateRecord()` / `appendRecord()`: Update existing or create new records
+- `updateRecord()` / `appendRecord()`: Update existing or create new records with sorted insertion
 - `fetchAutocompleteData()`: Loads student/class suggestions for autocomplete
+- `_checkAndRecoverFromTrash()`: **NEW** - Automatically detects and recovers deleted BPApp spreadsheets
+- `_findInsertPosition()`: **NEW** - Intelligently determines chronological insertion point for new records
+- `_insertRecordAtPosition()`: **NEW** - Inserts records maintaining date/class number sorting
 
 ### Authentication Flow
 ```dart
@@ -252,6 +255,29 @@ test/
 5. Initialize GoogleSheetsService with authenticated client
 6. Handle token refresh automatically
 ```
+
+### Advanced Features (Latest Implementation)
+
+#### Automatic Trash Recovery System
+- **Smart Detection**: App automatically checks Google Drive trash for deleted "BPApp" spreadsheets
+- **Recovery Process**: Seamlessly restores deleted spreadsheets without data loss
+- **User Notification**: Hebrew success message confirms recovery: "הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח!"
+- **Fallback Creation**: Only creates new spreadsheet if no recoverable version exists
+- **Implementation**: `_checkAndRecoverFromTrash()`, `_recoverFromTrash()` in GoogleSheetsService
+
+#### Intelligent Record Sorting & Insertion
+- **Chronological Ordering**: New records automatically inserted in correct chronological position
+- **Multi-Level Sorting**: Primary sort by date, secondary sort by class number (1-7)
+- **Smart Insertion**: `_findInsertPosition()` determines optimal placement
+- **Sheet ID Handling**: Proper sheet ID resolution for batch update operations
+- **Performance**: Efficient insertion without requiring full data reload
+
+#### Enhanced Authentication & Error Handling
+- **Debug Logging**: Comprehensive authentication state tracking and debug output
+- **Error Messages**: All error messages displayed in Hebrew with context
+- **Token Validation**: Enhanced `hasValidToken()` method with robust error handling
+- **Session Persistence**: Improved secure credential storage and retrieval
+- **OAuth Flow**: Refined Google Sign-In process with better error recovery
 
 ### Data Schema
 | תאריך | שם התלמיד | שם הכיתה | מספר השיעור | כניסה | שהייה | אווירה | ביצוע | מטרה אישית | בונוס | סה"כ | הערות |
@@ -529,25 +555,58 @@ flutter build apk --debug
 - **Gradle Issues**: Check `android/gradle/wrapper/gradle-wrapper.properties` for correct Gradle version
 - **Google Services**: Ensure `android/app/google-services.json` is present and correctly configured
 
+### Development Environment Configuration
+
+#### VS Code Workspace Setup
+The project includes optimized VS Code settings in `.vscode/settings.json`:
+```json
+{
+  "dart.flutterSdkPath": null,
+  "editor.formatOnSave": true,
+  "dart.lineLength": 100
+}
+```
+
+**Benefits:**
+- **Auto-formatting**: Code automatically formats on save following Dart conventions
+- **Line Length**: Consistent 100-character line limit for readability
+- **Flutter SDK**: Automatic SDK path detection for Windows development
+- **RTL Support**: Proper handling of Hebrew text direction in editor
+
+**Recommended VS Code Extensions:**
+- Dart
+- Flutter  
+- Hebrew Language Pack (for UI localization)
+- GitLens (for version control visualization)
+- Error Lens (for inline error display)
+
 ### Firebase/Google Services Setup
 The app uses Google OAuth and Sheets API. Configuration files:
 - **Android**: `android/app/google-services.json` (already present)
 - **iOS**: `ios/Runner/GoogleService-Info.plist` (needs to be added for iOS development)
 
 ### Current Implementation Status
-Based on the codebase analysis:
+Based on the latest codebase analysis:
 - ✅ Project structure created with proper Hebrew RTL support
-- ✅ Google Authentication service (`lib/services/google_auth_service.dart`)
-- ✅ Google Sheets service (`lib/services/google_sheets_service.dart`)
+- ✅ Google Authentication service (`lib/services/google_auth_service.dart`) with enhanced error handling
+- ✅ Google Sheets service (`lib/services/google_sheets_service.dart`) with trash recovery and sorted insertion
 - ✅ Form provider for state management (`lib/presentation/providers/form_provider.dart`)
-- ✅ Hebrew theme and constants configured
-- ✅ Main student form page (`lib/presentation/pages/student_form_page.dart`)
-- ✅ Custom Hebrew input widgets (date picker, number picker, text field)
-- ✅ Score display widget
+- ✅ Hebrew theme and constants configured with complete RTL support
+- ✅ Main student form page (`lib/presentation/pages/student_form_page.dart`) with recovery notifications
+- ✅ Custom Hebrew input widgets (date picker, number picker, text field) with enhanced UX
+- ✅ Score display widget with real-time calculation
 - ✅ Data models (student record, form field config, autocomplete data)
+- ✅ **NEW**: Automatic trash recovery system for deleted spreadsheets
+- ✅ **NEW**: Intelligent chronological record insertion and sorting
+- ✅ **NEW**: Enhanced authentication with comprehensive debug logging
+- ✅ **NEW**: VS Code workspace configuration for optimal Flutter/Dart development
 
 ### Dependency Version Notes
 Current versions in pubspec.yaml:
-- Flutter SDK: ^3.8.1
-- intl: ^0.20.2 (note: updated from ^0.18.1 mentioned earlier)
-- flutter_lints: ^5.0.0 (note: updated from ^3.0.0 mentioned earlier)
+- Flutter SDK: ^3.8.1 (Compatible with Flutter 3.32.6 stable)
+- Google APIs: googleapis ^11.4.0, google_sign_in ^6.1.5, googleapis_auth ^1.4.1
+- State Management: provider ^6.0.5
+- Storage: flutter_secure_storage ^9.0.0, shared_preferences ^2.2.2
+- Localization: intl ^0.20.2, flutter_localizations (SDK)
+- Development: flutter_lints ^5.0.0, mockito ^5.4.2, build_runner ^2.4.7
+- HTTP: http ^1.1.0
