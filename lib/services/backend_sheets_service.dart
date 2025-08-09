@@ -11,7 +11,7 @@ import 'google_auth_service.dart';
 /// Falls back to GoogleSheetsService if backend is unavailable
 class BackendSheetsService {
   // Firebase Functions URL for bpapp-hebrew project
-  static const String _backendUrl = 'https://us-central1-bpapp-hebrew.cloudfunctions.net/api';
+  static const String _backendUrl = 'https://us-central1-bpapp-hebrew.cloudfunctions.net/api/api';
   
   // Feature flag to enable/disable backend service
   static const bool _useBackendService = true; // ENABLED: For testing backend functionality
