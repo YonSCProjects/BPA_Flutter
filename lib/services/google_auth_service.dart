@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:http/http.dart' as http;
@@ -26,13 +27,25 @@ class GoogleAuthService extends ChangeNotifier {
   );
 
   GoogleSignInAccount? _currentUser;
+  User? _firebaseUser;
   bool _isLoading = false;
   String? _error;
 
   GoogleSignInAccount? get currentUser => _currentUser;
+  User? get firebaseUser => _firebaseUser;
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  
+  Future<String?> getFirebaseIdToken() async {
+    if (_firebaseUser == null) return null;
+    try {
+      return await _firebaseUser!.getIdToken();
+    } catch (e) {
+      debugPrint('[AUTH] Failed to get Firebase ID token: $e');
+      return null;
+    }
+  }
 
   GoogleAuthService() {
     _googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount? account) {
@@ -99,10 +112,14 @@ class GoogleAuthService extends ChangeNotifier {
       debugPrint('[AUTH] Current user set to: ${_currentUser?.email}');
       debugPrint('[AUTH] isAuthenticated: $isAuthenticated');
       
+      // Sign in to Firebase with Google credentials
+      await _signInToFirebase(account);
+      
       await _storeUserInfo();
       notifyListeners(); // Notify UI of authentication state change
       
       debugPrint('[AUTH] Google Sign-In successful for: ${account.email}');
+      debugPrint('[AUTH] Firebase user: ${_firebaseUser?.email}');
       debugPrint('[AUTH] Final isAuthenticated: $isAuthenticated');
       return true;
     } catch (e) {
@@ -125,7 +142,9 @@ class GoogleAuthService extends ChangeNotifier {
 
     try {
       await _googleSignIn.signOut();
+      await FirebaseAuth.instance.signOut();
       _currentUser = null;
+      _firebaseUser = null;
       await _clearStoredCredentials();
       notifyListeners(); // Notify UI of authentication state change
       
@@ -160,6 +179,25 @@ class GoogleAuthService extends ChangeNotifier {
     if (client == null) return null;
 
     return sheets.SheetsApi(client);
+  }
+
+  Future<void> _signInToFirebase(GoogleSignInAccount account) async {
+    try {
+      final GoogleSignInAuthentication googleAuth = await account.authentication;
+      
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      _firebaseUser = userCredential.user;
+      
+      debugPrint('[AUTH] Firebase sign-in successful: ${_firebaseUser?.email}');
+    } catch (e) {
+      debugPrint('[AUTH] Firebase sign-in error: $e');
+      // Don't fail the whole sign-in if Firebase fails - Google Sign-In still works
+    }
   }
 
   Future<void> _storeUserInfo() async {

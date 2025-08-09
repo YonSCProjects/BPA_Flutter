@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../data/models/student_record.dart';
-import '../../services/google_sheets_service.dart';
+import '../../services/sheets_service_manager.dart';
 
 class FormProvider extends ChangeNotifier {
   StudentRecord _currentRecord = StudentRecord.empty();
@@ -15,7 +15,7 @@ class FormProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isUpdateMode => _isUpdateMode;
 
-  Future<void> initializeWithDefaults(GoogleSheetsService sheetsService) async {
+  Future<void> initializeWithDefaults(SheetsServiceManager sheetsService) async {
     _setLoading(true);
     _setError(null);
 
@@ -86,7 +86,7 @@ class FormProvider extends ChangeNotifier {
         _currentRecord.classNumber > 0;
   }
 
-  Future<void> checkForExistingRecord(GoogleSheetsService sheetsService) async {
+  Future<void> checkForExistingRecord(SheetsServiceManager sheetsService) async {
     if (!canCheckForExistingRecord()) {
       debugPrint('🔄 [FORM] Cannot check for existing record - missing required fields');
       return;
@@ -129,7 +129,7 @@ class FormProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> saveRecord(GoogleSheetsService sheetsService) async {
+  Future<bool> saveRecord(SheetsServiceManager sheetsService) async {
     _setLoading(true);
     _setError(null);
 

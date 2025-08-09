@@ -38,6 +38,8 @@ dependencies:
   googleapis: ^11.4.0              # Google Sheets API client
   googleapis_auth: ^1.4.1          # Google APIs authentication library
   http: ^1.1.0                     # HTTP client for API calls
+  firebase_auth: ^4.15.0           # Firebase authentication for backend
+  firebase_core: ^2.24.0           # Firebase core functionality
 
   # State Management and Storage
   provider: ^6.0.5                 # State management

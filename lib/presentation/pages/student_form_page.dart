@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/google_auth_service.dart';
-import '../../services/google_sheets_service.dart';
+import '../../services/sheets_service_manager.dart';
 import '../widgets/hebrew_text_field.dart';
 import '../widgets/hebrew_number_picker.dart';
 import '../widgets/hebrew_date_picker.dart';
@@ -20,7 +20,7 @@ class StudentFormPage extends StatefulWidget {
 class _StudentFormPageState extends State<StudentFormPage> {
   final _formKey = GlobalKey<FormState>();
   late GoogleAuthService _authService;
-  late GoogleSheetsService _sheetsService;
+  late SheetsServiceManager _sheetsService;
   late FormProvider _formProvider;
   Timer? _debounceTimer;
 
@@ -28,7 +28,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
   void initState() {
     super.initState();
     _authService = context.read<GoogleAuthService>();
-    _sheetsService = context.read<GoogleSheetsService>();
+    _sheetsService = context.read<SheetsServiceManager>();
     _formProvider = context.read<FormProvider>();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -167,7 +167,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
           ),
         ],
       ),
-      body: Consumer3<GoogleAuthService, GoogleSheetsService, FormProvider>(
+      body: Consumer3<GoogleAuthService, SheetsServiceManager, FormProvider>(
         builder: (context, authService, sheetsService, formProvider, child) {
           debugPrint('[UI] Building UI - isAuth: ${authService.isAuthenticated}, isLoading: ${authService.isLoading}, currentUser: ${authService.currentUser?.email}');
           
@@ -264,7 +264,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
       child: Column(
         children: [
           // Show recovery message if available
-          Consumer<GoogleSheetsService>(
+          Consumer<SheetsServiceManager>(
             builder: (context, sheetsService, child) {
               if (sheetsService.recoveryMessage != null) {
                 return Container(

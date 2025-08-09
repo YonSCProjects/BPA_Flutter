@@ -91,3 +91,12 @@ ios/Runner/GoogleService-Info.plist
 
 # API Keys and sensitive config
 lib/config/api_keys.dart
+
+# Firebase Backend Service Account - NEVER commit this!
+backend/functions/service-account.json
+backend/functions/service-account.json.json
+backend/functions/*.json
+!backend/functions/package.json
+!backend/functions/tsconfig.json
+backend/functions/lib/
+backend/functions/node_modules/

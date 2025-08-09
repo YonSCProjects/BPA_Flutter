@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User-spreadsheet mappings are only accessible by the backend
+    match /userSpreadsheets/{email} {
+      allow read, write: if false; // Only backend service account can access
+    }
+    
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
