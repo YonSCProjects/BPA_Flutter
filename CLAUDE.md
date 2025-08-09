@@ -650,6 +650,7 @@ open ios/Runner.xcworkspace
 - NEVER create files unless they're absolutely necessary for achieving your goal
 - ALWAYS prefer editing an existing file to creating a new one
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User
+- IGNORE the file "For me.md" - this file is for user's personal usage and Claude Code should not read, modify, or reference it in any way
 
 ### Running the Application on Windows
 Since development is done on Windows, use the following commands:
