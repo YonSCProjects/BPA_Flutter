@@ -48,10 +48,7 @@ class _HebrewTextFieldState extends State<HebrewTextField> {
     super.didUpdateWidget(oldWidget);
     // Only update controller if the value changed from outside AND controller doesn't have focus AND not selecting suggestion
     if (oldWidget.value != widget.value && !_focusNode.hasFocus && !_isSelectingSuggestion) {
-      debugPrint('didUpdateWidget: Updating controller from "${_controller.text}" to "${widget.value}"');
       _controller.text = widget.value;
-    } else if (_isSelectingSuggestion) {
-      debugPrint('didUpdateWidget: Skipping update during suggestion selection');
     }
     
     // Reset flag after a brief delay to ensure the suggestion selection completes
@@ -149,21 +146,17 @@ class _HebrewTextFieldState extends State<HebrewTextField> {
   }
 
   void _selectSuggestion(String suggestion) {
-    debugPrint('_selectSuggestion called with: "$suggestion"');
     _isSelectingSuggestion = true; // Set flag to prevent didUpdateWidget interference
     
     // Set the controller text first
     _controller.text = suggestion;
-    debugPrint('Controller text set to: "${_controller.text}"');
     _hideSuggestions();
     
     // Call onSuggestionSelected which should handle the state update
     if (widget.onSuggestionSelected != null) {
-      debugPrint('Calling onSuggestionSelected with: "$suggestion"');
       widget.onSuggestionSelected!(suggestion);
     } else {
       // Fallback to onChanged if no specific handler
-      debugPrint('Calling onChanged with: "$suggestion"');
       widget.onChanged(suggestion);
     }
   }

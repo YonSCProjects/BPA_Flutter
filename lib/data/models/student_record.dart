@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class StudentRecord {
   final String date;              // תאריך
   final String studentName;       // שם התלמיד
