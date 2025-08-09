@@ -9,7 +9,7 @@ import 'backend_sheets_service.dart';
 /// Service manager that controls which sheets service to use
 /// This provides a single interface for the app while allowing
 /// switching between the original and backend implementations
-class SheetsServiceManager {
+class SheetsServiceManager extends ChangeNotifier {
   static const String _backendEnabledKey = 'backend_sheets_enabled';
   
   // Singleton instance
@@ -33,6 +33,14 @@ class SheetsServiceManager {
     _authService = authService;
     _originalService = GoogleSheetsService(authService);
     _backendService = BackendSheetsService(authService);
+    
+    // Forward change notifications from the active service
+    _originalService.addListener(_forwardNotification);
+  }
+  
+  /// Forward notifications from underlying services to UI
+  void _forwardNotification() {
+    notifyListeners();
   }
   
   /// Initialize the service manager
@@ -49,11 +57,12 @@ class SheetsServiceManager {
     _useBackend = prefs.getBool(_backendEnabledKey) ?? false;
     
     // Initialize the appropriate service
+    debugPrint('SheetsServiceManager: _useBackend=$_useBackend, backendService.isEnabled=${_backendService.isEnabled}');
     if (_useBackend && _backendService.isEnabled) {
       debugPrint('SheetsServiceManager: Using backend service');
       await _backendService.initialize();
     } else {
-      debugPrint('SheetsServiceManager: Using original service');
+      debugPrint('SheetsServiceManager: Using original service (backend disabled or unavailable)');
       await _originalService.initialize();
     }
     
@@ -141,7 +150,7 @@ class SheetsServiceManager {
       return await _backendService.hasValidAuth();
     } else {
       // GoogleSheetsService doesn't have hasValidToken, check via auth service
-      return _authService?.hasValidToken() ?? false;
+      return await _authService?.hasValidToken() ?? false;
     }
   }
   
@@ -179,14 +188,34 @@ class SheetsServiceManager {
   List<String> Function(String) get getClassSuggestions => _originalService.getClassSuggestions;
   
   /// Check if service is loading
-  bool get isLoading => false;
+  bool get isLoading {
+    if (isBackendEnabled) {
+      return false; // BackendSheetsService doesn't expose loading state
+    } else {
+      return _originalService.isLoading;
+    }
+  }
   
   /// Get service error
-  String? get error => null;
+  String? get error {
+    if (isBackendEnabled) {
+      return null; // BackendSheetsService doesn't expose error state
+    } else {
+      return _originalService.error;
+    }
+  }
   
   /// Get recovery message
   String? get recoveryMessage => _originalService.recoveryMessage;
   
   /// Clear recovery message
   void clearRecoveryMessage() => _originalService.clearRecoveryMessage();
+  
+  /// Clear corrupted data from spreadsheet
+  Future<void> clearCorruptedData() async {
+    if (!_initialized) await initialize();
+    
+    // Only the original service has the cleanup method
+    await _originalService.clearCorruptedData();
+  }
 }

@@ -14,7 +14,7 @@ class BackendSheetsService {
   static const String _backendUrl = 'https://us-central1-bpapp-hebrew.cloudfunctions.net/api';
   
   // Feature flag to enable/disable backend service
-  static const bool _useBackendService = false; // TODO: Fix method signatures first
+  static const bool _useBackendService = true; // ENABLED: For testing backend functionality
   
   // Fallback to existing service
   late final GoogleSheetsService _fallbackService;
@@ -54,9 +54,20 @@ class BackendSheetsService {
   /// Get current user's ID token for authentication
   Future<String?> _getIdToken() async {
     try {
-      return await _authService.getFirebaseIdToken();
+      debugPrint('[BACKEND] Getting Firebase ID token...');
+      final token = await _authService.getFirebaseIdToken();
+      debugPrint('[BACKEND] Firebase ID token: ${token != null ? "FOUND" : "NULL"}');
+      if (token != null) {
+        return token;
+      }
+      
+      // Fallback to Google OAuth access token for testing
+      debugPrint('[BACKEND] Firebase failed, trying Google OAuth token...');
+      final googleToken = await _authService.getAccessToken();
+      debugPrint('[BACKEND] Google OAuth token: ${googleToken != null ? "FOUND" : "NULL"}');
+      return googleToken;
     } catch (e) {
-      debugPrint('Failed to get ID token: $e');
+      debugPrint('[BACKEND] Failed to get any token: $e');
       return null;
     }
   }
@@ -98,9 +109,13 @@ class BackendSheetsService {
   
   /// Save a student record
   Future<bool> saveRecord(StudentRecord record) async {
+    debugPrint('[BACKEND] saveRecord called - useBackend: $_useBackendService');
     if (!_useBackendService) {
+      debugPrint('[BACKEND] Using fallback service');
       return await _fallbackService.saveRecord(record);
     }
+    
+    debugPrint('[BACKEND] Using backend service for: ${record.studentName}');
     
     try {
       final token = await _getIdToken();

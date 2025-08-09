@@ -7,6 +7,7 @@ import 'core/theme/hebrew_theme.dart';
 import 'core/constants/hebrew_strings.dart';
 import 'services/google_auth_service.dart';
 import 'services/google_sheets_service.dart';
+import 'services/sheets_service_manager.dart';
 import 'presentation/providers/form_provider.dart';
 import 'presentation/pages/student_form_page.dart';
 
@@ -32,6 +33,22 @@ class BPApp extends StatelessWidget {
           ),
           update: (context, authService, sheetsService) =>
               sheetsService ?? GoogleSheetsService(authService),
+        ),
+        ChangeNotifierProxyProvider<GoogleAuthService, SheetsServiceManager>(
+          create: (context) {
+            final manager = SheetsServiceManager();
+            manager.setAuthService(context.read<GoogleAuthService>());
+            // Don't initialize here - let UI initialize when ready
+            return manager;
+          },
+          update: (context, authService, manager) {
+            if (manager == null) {
+              final newManager = SheetsServiceManager();
+              newManager.setAuthService(authService);
+              return newManager;
+            }
+            return manager;
+          },
         ),
         ChangeNotifierProvider(
           create: (_) => FormProvider(),

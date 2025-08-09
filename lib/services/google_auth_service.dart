@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:http/http.dart' as http;
@@ -38,11 +39,34 @@ class GoogleAuthService extends ChangeNotifier {
   String? get error => _error;
   
   Future<String?> getFirebaseIdToken() async {
-    if (_firebaseUser == null) return null;
+    debugPrint('[AUTH] getFirebaseIdToken called - firebaseUser: ${_firebaseUser?.email ?? "NULL"}');
+    
+    // Check if Firebase user exists
+    if (_firebaseUser == null) {
+      debugPrint('[AUTH] No Firebase user found, checking FirebaseAuth instance...');
+      
+      // Try to get current user from FirebaseAuth instance
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        debugPrint('[AUTH] Found Firebase user in instance: ${currentUser.email}');
+        _firebaseUser = currentUser;
+      } else {
+        debugPrint('[AUTH] No Firebase user in instance either');
+        return null;
+      }
+    }
+    
     try {
-      return await _firebaseUser!.getIdToken();
+      // Force token refresh to ensure it's valid
+      final token = await _firebaseUser!.getIdToken(true);
+      debugPrint('[AUTH] Firebase ID token obtained successfully');
+      return token;
     } catch (e) {
       debugPrint('[AUTH] Failed to get Firebase ID token: $e');
+      debugPrint('[AUTH] Error type: ${e.runtimeType}');
+      
+      // Clear invalid Firebase user
+      _firebaseUser = null;
       return null;
     }
   }
@@ -183,20 +207,37 @@ class GoogleAuthService extends ChangeNotifier {
 
   Future<void> _signInToFirebase(GoogleSignInAccount account) async {
     try {
+      debugPrint('[AUTH] Starting Firebase sign-in for: ${account.email}');
+      
       final GoogleSignInAuthentication googleAuth = await account.authentication;
+      debugPrint('[AUTH] Got Google auth tokens - accessToken: ${googleAuth.accessToken != null ? "FOUND" : "NULL"}, idToken: ${googleAuth.idToken != null ? "FOUND" : "NULL"}');
+      
+      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+        debugPrint('[AUTH] Missing required tokens for Firebase Auth');
+        return;
+      }
       
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
+      debugPrint('[AUTH] Created Firebase credential');
       
       final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       _firebaseUser = userCredential.user;
       
       debugPrint('[AUTH] Firebase sign-in successful: ${_firebaseUser?.email}');
-    } catch (e) {
+      debugPrint('[AUTH] Firebase user ID: ${_firebaseUser?.uid}');
+    } catch (e, stackTrace) {
       debugPrint('[AUTH] Firebase sign-in error: $e');
+      debugPrint('[AUTH] Stack trace: $stackTrace');
+      debugPrint('[AUTH] Error type: ${e.runtimeType}');
+      
+      // Clear Firebase user on error
+      _firebaseUser = null;
+      
       // Don't fail the whole sign-in if Firebase fails - Google Sign-In still works
+      debugPrint('[AUTH] Continuing with Google Sign-In only (Firebase disabled)');
     }
   }
 
@@ -249,6 +290,19 @@ class GoogleAuthService extends ChangeNotifier {
       return auth.accessToken != null;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Get Google OAuth access token for API calls
+  Future<String?> getAccessToken() async {
+    if (_currentUser == null) return null;
+    
+    try {
+      final auth = await _currentUser!.authentication;
+      return auth.accessToken;
+    } catch (e) {
+      debugPrint('[AUTH] Failed to get access token: $e');
+      return null;
     }
   }
 

@@ -276,8 +276,11 @@ class GoogleSheetsService extends ChangeNotifier {
       // Apply protection to recovered spreadsheet
       await _protectSpreadsheet();
       
+      // Clean up any corrupted data from the recovered spreadsheet
+      await clearCorruptedData();
+      
       // Set recovery success message
-      _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! כל הנתונים שלך נשמרו.';
+      _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! הנתונים נוקו מנתונים פגומים.';
       
       // Notify about recovery (this could trigger UI notification)
       notifyListeners();
@@ -596,12 +599,122 @@ class GoogleSheetsService extends ChangeNotifier {
     }
   }
 
-  /// Original save record logic preserved for fallback
-  Future<bool> _originalSaveRecord(StudentRecord record) async {
-    debugPrint('💾 [SAVE] Using original save logic');
+  /// Clear corrupted data from spreadsheet after recovery
+  Future<void> clearCorruptedData() async {
+    if (_sheetsApi == null || _spreadsheetId == null) return;
     
     try {
+      debugPrint('🧹 [CLEANUP] Starting corrupted data cleanup...');
+      
+      final response = await _sheetsApi!.spreadsheets.values.get(
+        _spreadsheetId!,
+        '$worksheetName!A2:L',
+      );
+
+      if (response.values != null && response.values!.isNotEmpty) {
+        debugPrint('🧹 [CLEANUP] Found ${response.values!.length} existing records');
+        
+        // Check for corrupted records (empty student names, malformed dates)
+        List<int> corruptedRows = [];
+        
+        for (int i = 0; i < response.values!.length; i++) {
+          final row = response.values![i];
+          if (row.length >= 2) {
+            final date = row[0]?.toString() ?? '';
+            final studentName = row[1]?.toString() ?? '';
+            
+            // Check for corrupted data patterns
+            bool isCorrupted = false;
+            
+            // Pattern 1: Student name in date field (like "09/08/2025 חיים")
+            if (date.contains(' ') && date.length > 15) {
+              debugPrint('🧹 [CLEANUP] Found corrupted date in row ${i + 2}: "$date"');
+              isCorrupted = true;
+            }
+            
+            // Pattern 2: Empty student name but other fields have data
+            if (studentName.trim().isEmpty && row.length > 4) {
+              bool hasOtherData = false;
+              for (int j = 4; j < row.length && j < 11; j++) {
+                if (row[j]?.toString().trim().isNotEmpty == true) {
+                  hasOtherData = true;
+                  break;
+                }
+              }
+              if (hasOtherData) {
+                debugPrint('🧹 [CLEANUP] Found empty student name with data in row ${i + 2}');
+                isCorrupted = true;
+              }
+            }
+            
+            if (isCorrupted) {
+              corruptedRows.add(i + 2); // Convert to 1-based row number
+            }
+          }
+        }
+        
+        // Delete corrupted rows
+        if (corruptedRows.isNotEmpty) {
+          debugPrint('🧹 [CLEANUP] Deleting ${corruptedRows.length} corrupted rows: $corruptedRows');
+          
+          // Delete rows from bottom to top to maintain row indices
+          for (int rowNum in corruptedRows.reversed) {
+            try {
+              final deleteRequest = sheets.Request(
+                deleteRange: sheets.DeleteRangeRequest(
+                  range: sheets.GridRange(
+                    sheetId: _sheetId ?? 0,
+                    startRowIndex: rowNum - 1, // Convert to 0-based
+                    endRowIndex: rowNum,
+                    startColumnIndex: 0,
+                    endColumnIndex: hebrewHeaders.length,
+                  ),
+                  shiftDimension: 'ROWS',
+                ),
+              );
+
+              final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
+                requests: [deleteRequest],
+              );
+
+              await _sheetsApi!.spreadsheets.batchUpdate(
+                batchUpdateRequest,
+                _spreadsheetId!,
+              );
+              
+              debugPrint('🧹 [CLEANUP] Deleted corrupted row $rowNum');
+            } catch (e) {
+              debugPrint('🧹 [CLEANUP] Error deleting row $rowNum: $e');
+            }
+          }
+          
+          debugPrint('✅ [CLEANUP] Cleanup completed - deleted ${corruptedRows.length} corrupted rows');
+          
+          // Reload autocomplete data after cleanup
+          await _loadAutocompleteData();
+          notifyListeners();
+        } else {
+          debugPrint('✅ [CLEANUP] No corrupted data found');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ [CLEANUP] Error during cleanup: $e');
+    }
+  }
+
+  /// Enhanced save record with data validation
+  Future<bool> _originalSaveRecord(StudentRecord record) async {
+    debugPrint('💾 [SAVE] Using original save logic with enhanced validation');
+    
+    try {
+      // Validate record data before saving
+      if (!_validateRecord(record)) {
+        debugPrint('❌ [SAVE] Record validation failed');
+        return false;
+      }
+      
       debugPrint('💾 [SAVE] Record with score: ${record.toString()}');
+      debugPrint('💾 [SAVE] Record validation passed - proceeding with save');
       
       final existingRecord = await findMatchingRecord(record);
 
@@ -621,6 +734,45 @@ class GoogleSheetsService extends ChangeNotifier {
       debugPrint('❌ [SAVE] Original save method error: $e');
       return false;
     }
+  }
+  
+  /// Validate record data before saving
+  bool _validateRecord(StudentRecord record) {
+    debugPrint('🔍 [VALIDATE] Validating record data...');
+    debugPrint('🔍 [VALIDATE] Date: "${record.date}" (length: ${record.date.length})');
+    debugPrint('🔍 [VALIDATE] Student Name: "${record.studentName}" (length: ${record.studentName.length})');
+    debugPrint('🔍 [VALIDATE] Class Name: "${record.className}" (length: ${record.className.length})');
+    debugPrint('🔍 [VALIDATE] Class Number: ${record.classNumber}');
+    
+    // Basic validation
+    if (record.date.trim().isEmpty) {
+      debugPrint('❌ [VALIDATE] Date is empty');
+      return false;
+    }
+    
+    if (record.studentName.trim().isEmpty) {
+      debugPrint('❌ [VALIDATE] Student name is empty');
+      return false;
+    }
+    
+    if (record.className.trim().isEmpty) {
+      debugPrint('❌ [VALIDATE] Class name is empty');
+      return false;
+    }
+    
+    if (record.classNumber < 1 || record.classNumber > 7) {
+      debugPrint('❌ [VALIDATE] Invalid class number: ${record.classNumber}');
+      return false;
+    }
+    
+    // Check for suspicious data patterns
+    if (record.date.contains(record.studentName) || record.date.length > 20) {
+      debugPrint('❌ [VALIDATE] Date field contains suspicious data: "${record.date}"');
+      return false;
+    }
+    
+    debugPrint('✅ [VALIDATE] Record validation passed');
+    return true;
   }
 
   Future<bool> _updateRecord(StudentRecord record) async {
