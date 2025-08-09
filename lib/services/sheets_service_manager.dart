@@ -54,7 +54,7 @@ class SheetsServiceManager extends ChangeNotifier {
     
     // Load preference from storage
     final prefs = await SharedPreferences.getInstance();
-    _useBackend = prefs.getBool(_backendEnabledKey) ?? false;
+    _useBackend = prefs.getBool(_backendEnabledKey) ?? true; // Default to ENABLED
     
     // Initialize the appropriate service
     debugPrint('SheetsServiceManager: _useBackend=$_useBackend, backendService.isEnabled=${_backendService.isEnabled}');
