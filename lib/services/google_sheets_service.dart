@@ -29,6 +29,9 @@ class GoogleSheetsService extends ChangeNotifier {
   final GoogleAuthService _authService;
   final LocalStorageService _localStorageService = LocalStorageService();
   
+  /// Access to the authentication service for multi-destination saving
+  GoogleAuthService get authService => _authService;
+  
   sheets.SheetsApi? _sheetsApi;
   drive.DriveApi? _driveApi;
   String? _spreadsheetId;

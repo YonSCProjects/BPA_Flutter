@@ -138,11 +138,10 @@ class FormProvider extends ChangeNotifier {
     try {
       final recordToSave = _currentRecord.withCalculatedScore();
       
-      // Check if we need multi-destination saving
-      final authService = GoogleAuthService();
+      // Use multi-destination service with the same auth service that GoogleSheetsService uses
       final multiService = MultiDestinationSheetsService(
         primaryService: sheetsService,
-        authService: authService,
+        authService: sheetsService.authService, // Use the already authenticated service
       );
       
       // Use multi-destination service which handles both primary and educator sheets

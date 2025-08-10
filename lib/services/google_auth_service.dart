@@ -11,6 +11,7 @@ class GoogleAuthService extends ChangeNotifier {
   static const List<String> _scopes = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive.metadata.readonly',
   ];
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
