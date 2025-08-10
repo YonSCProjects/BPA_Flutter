@@ -108,184 +108,136 @@ class MultiDestinationSheetsService {
       
       final driveApi = drive.DriveApi(client);
       
-      // Strategy 1: Search for BPApp spreadsheets owned by educator
-      debugPrint('🔍 [MULTI-SAVE] Strategy 1: Searching for BPApp owned by $educatorEmail');
-      final query1 = "name contains 'BPApp' and "
+      // Strategy 1: Search for BPApp spreadsheets shared with current user that are owned by educator
+      debugPrint('🔍 [MULTI-SAVE] Strategy 1: Searching for BPApp shared with me and owned by $educatorEmail');
+      final query1 = "sharedWithMe and "
+                    "name contains 'BPApp' and "
                     "mimeType='application/vnd.google-apps.spreadsheet' and "
-                    "trashed=false and "
-                    "'$educatorEmail' in owners";
+                    "trashed=false";
       
       debugPrint('🔍 [MULTI-SAVE] Query 1: $query1');
       
       var response = await driveApi.files.list(
         q: query1,
         spaces: 'drive',
-        $fields: 'files(id,name,owners,permissions,shared)',
+        $fields: 'files(id,name,owners,permissions,shared,capabilities)',
       );
       
       debugPrint('🔍 [MULTI-SAVE] Strategy 1 results: ${response.files?.length ?? 0} files');
       
-      // Strategy 2: Search for ALL BPApp spreadsheets (including shared)
-      if (response.files == null || response.files!.isEmpty) {
-        debugPrint('🔍 [MULTI-SAVE] Strategy 2: Searching for ALL BPApp spreadsheets');
-        final query2 = "name contains 'BPApp' and "
-                      "mimeType='application/vnd.google-apps.spreadsheet' and "
-                      "trashed=false";  // All BPApp spreadsheets
-        
-        debugPrint('🔍 [MULTI-SAVE] Query 2: $query2');
-        
-        response = await driveApi.files.list(
-          q: query2,
-          spaces: 'drive',
-          $fields: 'files(id,name,owners,permissions,shared)',
-        );
-        
-        debugPrint('🔍 [MULTI-SAVE] Strategy 2 results: ${response.files?.length ?? 0} files');
-        debugPrint('🔍 [MULTI-SAVE] All BPApp files found:');
-        if (response.files != null) {
-          for (final file in response.files!) {
-            final owners = file.owners?.map((o) => o.emailAddress).join(", ") ?? "no owners";
-            final shared = file.shared ?? false;
-            debugPrint('📋 [MULTI-SAVE] File: "${file.name}" (ID: ${file.id})');
-            debugPrint('📋 [MULTI-SAVE]   - Owned by: $owners');
-            debugPrint('📋 [MULTI-SAVE]   - Shared: $shared');
-            debugPrint('📋 [MULTI-SAVE]   - Target educator: $educatorEmail');
-          }
-        }
-        
-        // Filter by owner email from the results
-        if (response.files != null && response.files!.isNotEmpty) {
-          final filteredFiles = response.files!.where((file) {
-            final owners = file.owners;
-            if (owners != null) {
-              for (final owner in owners) {
-                if (owner.emailAddress == educatorEmail) {
-                  debugPrint('📋 [MULTI-SAVE] ✅ MATCH! File: ${file.name} owned by $educatorEmail');
-                  return true;
-                }
-              }
-            }
-            return false;
-          }).toList();
-          
-          debugPrint('🔍 [MULTI-SAVE] After filtering by owner: ${filteredFiles.length} files');
-          response = drive.FileList()..files = filteredFiles;
-        }
-      }
-      
+      // Filter files owned by the educator and check edit permissions
       if (response.files != null && response.files!.isNotEmpty) {
-        // Found educator's spreadsheet
-        final file = response.files!.first;
-        final spreadsheetId = file.id!;
-        
-        debugPrint('✅ [MULTI-SAVE] Found educator spreadsheet: ${file.name} (ID: $spreadsheetId)');
-        debugPrint('✅ [MULTI-SAVE] Spreadsheet owners: ${file.owners?.map((o) => o.emailAddress).join(", ")}');
-        debugPrint('✅ [MULTI-SAVE] Shared status: ${file.shared}');
-        
-        // Cache it
-        _educatorSpreadsheetIds[educatorEmail] = spreadsheetId;
-        
-        // Check if we have write permission
-        final hasWriteAccess = await _checkWritePermission(driveApi, spreadsheetId);
-        
-        debugPrint('🔐 [MULTI-SAVE] Write access check result: $hasWriteAccess');
-        
-        if (!hasWriteAccess) {
-          debugPrint('⚠️ [MULTI-SAVE] No write access to educator spreadsheet');
-          return null;
-        }
-        
-        return spreadsheetId;
-      } else {
-        debugPrint('❌ [MULTI-SAVE] No educator spreadsheet found for: $educatorEmail');
-        
-        // Strategy 3: Search with alternative naming
-        debugPrint('🔍 [MULTI-SAVE] Strategy 3: Trying alternative naming patterns');
-        final query3 = "name contains 'BPApp - $educatorEmail' or "
-                      "name='BPApp' and "
-                      "mimeType='application/vnd.google-apps.spreadsheet' and "
-                      "trashed=false";
-        
-        debugPrint('🔍 [MULTI-SAVE] Query 3: $query3');
-        
-        final fallbackResponse = await driveApi.files.list(
-          q: query3,
-          spaces: 'drive',
-          $fields: 'files(id,name,owners)',
-        );
-        
-        debugPrint('🔍 [MULTI-SAVE] Strategy 3 results: ${fallbackResponse.files?.length ?? 0} files');
-        
-        if (fallbackResponse.files != null && fallbackResponse.files!.isNotEmpty) {
-          for (final file in fallbackResponse.files!) {
-            final owners = file.owners?.map((o) => o.emailAddress).join(", ") ?? "no owners";
-            debugPrint('📋 [MULTI-SAVE] Alternative file found: "${file.name}" (ID: ${file.id}) owned by: $owners');
-          }
+        debugPrint('🔍 [MULTI-SAVE] Shared BPApp files found:');
+        for (final file in response.files!) {
+          final owners = file.owners?.map((o) => o.emailAddress).join(", ") ?? "no owners";
+          final shared = file.shared ?? false;
+          final canEdit = file.capabilities?.canEdit ?? false;
+          debugPrint('📋 [MULTI-SAVE] File: "${file.name}" (ID: ${file.id})');
+          debugPrint('📋 [MULTI-SAVE]   - Owned by: $owners');
+          debugPrint('📋 [MULTI-SAVE]   - Shared: $shared, Can Edit: $canEdit');
+          debugPrint('📋 [MULTI-SAVE]   - Target educator: $educatorEmail');
           
-          // Filter to only use files owned by the educator
-          final educatorOwnedFiles = fallbackResponse.files!.where((file) {
-            final owners = file.owners;
-            if (owners != null) {
-              for (final owner in owners) {
-                if (owner.emailAddress == educatorEmail) {
-                  return true;
-                }
-              }
-            }
-            return false;
-          }).toList();
-          
-          debugPrint('🔍 [MULTI-SAVE] Files owned by $educatorEmail: ${educatorOwnedFiles.length}');
-          
-          if (educatorOwnedFiles.isEmpty) {
-            debugPrint('❌ [MULTI-SAVE] No BPApp files owned by $educatorEmail in Strategy 3');
-            // Don't return null here - continue to Strategy 4
-          } else {
-          
-            final spreadsheetId = educatorOwnedFiles.first.id!;
+          // Check if this file is owned by our target educator
+          final isOwnedByEducator = file.owners?.any((owner) => owner.emailAddress == educatorEmail) ?? false;
+          if (isOwnedByEducator && canEdit) {
+            debugPrint('📋 [MULTI-SAVE] ✅ PERFECT MATCH! File owned by $educatorEmail with edit access');
+            final spreadsheetId = file.id!;
             _educatorSpreadsheetIds[educatorEmail] = spreadsheetId;
-            debugPrint('✅ [MULTI-SAVE] Found fallback educator spreadsheet: $spreadsheetId (verified owned by $educatorEmail)');
+            
+            debugPrint('✅ [MULTI-SAVE] Found educator spreadsheet: ${file.name} (ID: $spreadsheetId)');
+            debugPrint('✅ [MULTI-SAVE] Spreadsheet owners: $owners');
+            debugPrint('✅ [MULTI-SAVE] Edit permission: $canEdit');
+            
             return spreadsheetId;
           }
         }
-        
-        debugPrint('❌ [MULTI-SAVE] All search strategies failed for educator: $educatorEmail');
-        
-        // Strategy 4: Try to access the educator's known spreadsheet ID directly
-        debugPrint('🔍 [MULTI-SAVE] Strategy 4: Testing direct access to known educator spreadsheet');
-        try {
-          const knownEducatorSpreadsheetId = '1oTMhLMuE57T8AK9kzbeQc1csJvCM4VvtdXW_VCVbcE4';
-          debugPrint('🔍 [MULTI-SAVE] Attempting direct access to: $knownEducatorSpreadsheetId');
-          
-          final testFile = await driveApi.files.get(
-            knownEducatorSpreadsheetId,
-            $fields: 'id,name,owners,shared,capabilities',
-          );
-          
-          final owners = (testFile as drive.File).owners?.map((o) => o.emailAddress).join(", ") ?? "no owners";
-          final shared = testFile.shared ?? false;
-          final canEdit = testFile.capabilities?.canEdit ?? false;
-          
-          debugPrint('✅ [MULTI-SAVE] Direct access SUCCESS!');
-          debugPrint('📋 [MULTI-SAVE] File: "${testFile.name}" owned by: $owners');
-          debugPrint('📋 [MULTI-SAVE] Shared: $shared, Can Edit: $canEdit');
-          
-          if (canEdit) {
-            debugPrint('🎉 [MULTI-SAVE] Found accessible educator spreadsheet via direct access!');
-            _educatorSpreadsheetIds[educatorEmail] = knownEducatorSpreadsheetId;
-            return knownEducatorSpreadsheetId;
-          }
-        } catch (e) {
-          debugPrint('❌ [MULTI-SAVE] Direct access failed: $e');
-        }
-        
-        debugPrint('💡 [MULTI-SAVE] SOLUTION: The educator ($educatorEmail) needs to:');
-        debugPrint('💡 [MULTI-SAVE] 1. ✅ Sign in to BPApp (DONE - spreadsheet created: 1oTMhLMuE57T8AK9kzbeQc1csJvCM4VvtdXW_VCVbcE4)');
-        debugPrint('💡 [MULTI-SAVE] 2. ❓ SHARE their BPApp spreadsheet with teacher (yon.level@gmail.com)');
-        debugPrint('💡 [MULTI-SAVE] 3. ❓ Give teacher EDIT permissions to their spreadsheet');
-        debugPrint('💡 [MULTI-SAVE] Issue: Teacher cannot find educator\'s spreadsheet via Drive API search!');
-        return null;
       }
+      
+      // Strategy 2: Search for ALL BPApp spreadsheets accessible to current user  
+      debugPrint('🔍 [MULTI-SAVE] Strategy 2: Searching for ALL accessible BPApp spreadsheets');
+      final query2 = "name contains 'BPApp' and "
+                    "mimeType='application/vnd.google-apps.spreadsheet' and "
+                    "trashed=false";
+      
+      debugPrint('🔍 [MULTI-SAVE] Query 2: $query2');
+      
+      response = await driveApi.files.list(
+        q: query2,
+        spaces: 'drive',
+        $fields: 'files(id,name,owners,permissions,shared,capabilities)',
+      );
+      
+      debugPrint('🔍 [MULTI-SAVE] Strategy 2 results: ${response.files?.length ?? 0} files');
+      
+      if (response.files != null && response.files!.isNotEmpty) {
+        debugPrint('🔍 [MULTI-SAVE] All accessible BPApp files:');
+        for (final file in response.files!) {
+          final owners = file.owners?.map((o) => o.emailAddress).join(", ") ?? "no owners";
+          final shared = file.shared ?? false;
+          final canEdit = file.capabilities?.canEdit ?? false;
+          debugPrint('📋 [MULTI-SAVE] File: "${file.name}" (ID: ${file.id})');
+          debugPrint('📋 [MULTI-SAVE]   - Owned by: $owners');
+          debugPrint('📋 [MULTI-SAVE]   - Shared: $shared, Can Edit: $canEdit');
+          debugPrint('📋 [MULTI-SAVE]   - Target educator: $educatorEmail');
+          
+          // Check if this file is owned by our target educator
+          final isOwnedByEducator = file.owners?.any((owner) => owner.emailAddress == educatorEmail) ?? false;
+          if (isOwnedByEducator && canEdit) {
+            debugPrint('📋 [MULTI-SAVE] ✅ MATCH! File owned by $educatorEmail with edit access');
+            final spreadsheetId = file.id!;
+            _educatorSpreadsheetIds[educatorEmail] = spreadsheetId;
+            
+            debugPrint('✅ [MULTI-SAVE] Found educator spreadsheet: ${file.name} (ID: $spreadsheetId)');
+            debugPrint('✅ [MULTI-SAVE] Spreadsheet owners: $owners');
+            debugPrint('✅ [MULTI-SAVE] Edit permission: $canEdit');
+            
+            return spreadsheetId;
+          }
+        }
+      }
+      
+      // Strategy 3: Legacy search by owner (fallback for older sharing setups)
+      debugPrint('🔍 [MULTI-SAVE] Strategy 3: Legacy search by owner');
+      final query3 = "name contains 'BPApp' and "
+                    "mimeType='application/vnd.google-apps.spreadsheet' and "
+                    "trashed=false and "
+                    "'$educatorEmail' in owners";
+      
+      debugPrint('🔍 [MULTI-SAVE] Query 3: $query3');
+      
+      response = await driveApi.files.list(
+        q: query3,
+        spaces: 'drive',
+        $fields: 'files(id,name,owners,capabilities)',
+      );
+      
+      debugPrint('🔍 [MULTI-SAVE] Strategy 3 results: ${response.files?.length ?? 0} files');
+      
+      if (response.files != null && response.files!.isNotEmpty) {
+        final file = response.files!.first;
+        final spreadsheetId = file.id!;
+        final canEdit = file.capabilities?.canEdit ?? false;
+        
+        if (canEdit) {
+          debugPrint('✅ [MULTI-SAVE] Found educator spreadsheet via legacy search: ${file.name} (ID: $spreadsheetId)');
+          _educatorSpreadsheetIds[educatorEmail] = spreadsheetId;
+          return spreadsheetId;
+        } else {
+          debugPrint('⚠️ [MULTI-SAVE] Found spreadsheet but no edit permission');
+        }
+      }
+      
+      // All strategies failed - provide helpful diagnostic
+      debugPrint('❌ [MULTI-SAVE] All search strategies failed for educator: $educatorEmail');
+      debugPrint('💡 [MULTI-SAVE] SOLUTION: The educator ($educatorEmail) needs to:');
+      debugPrint('💡 [MULTI-SAVE] 1. Open their BPApp spreadsheet in Google Sheets');
+      debugPrint('💡 [MULTI-SAVE] 2. Click "Share" button in top-right corner');
+      debugPrint('💡 [MULTI-SAVE] 3. Add teacher email (${_authService.currentUser?.email}) as Editor');
+      debugPrint('💡 [MULTI-SAVE] 4. Click "Send" to share with edit permissions');
+      debugPrint('💡 [MULTI-SAVE] This will allow the teacher to save records to educator\'s spreadsheet');
+      
+      return null;
+      
     } catch (e) {
       debugPrint('❌ [MULTI-SAVE] Error finding educator spreadsheet: $e');
       return null;
@@ -316,19 +268,19 @@ class MultiDestinationSheetsService {
       
       final sheetsApi = sheets.SheetsApi(client);
       
-      // Try to relax protection so the teacher (current user) can write
+      // Try to fix protection on educator's spreadsheet so teacher can write
       try {
         final currentUserEmail = _authService.currentUser?.email;
         if (currentUserEmail != null) {
-          await _ensureWriteAccessToProtectedRanges(
+          await _fixEducatorSpreadsheetProtection(
             sheetsApi: sheetsApi,
             spreadsheetId: spreadsheetId,
             targetSheetTitle: 'נתוני תלמידים',
-            editorEmail: currentUserEmail,
+            teacherEmail: currentUserEmail,
           );
         }
       } catch (e) {
-        debugPrint('⚠️ [MULTI-SAVE] Could not adjust protected ranges: $e');
+        debugPrint('⚠️ [MULTI-SAVE] Could not fix educator spreadsheet protection: $e');
       }
       
       // Verify spreadsheet details before saving
@@ -470,6 +422,90 @@ class MultiDestinationSheetsService {
     } catch (e) {
       debugPrint('❌ [MULTI-SAVE] Failed to find/create sheet "$title": $e');
       return null;
+    }
+  }
+
+  /// Fix educator spreadsheet protection to allow teacher writes
+  Future<void> _fixEducatorSpreadsheetProtection({
+    required sheets.SheetsApi sheetsApi,
+    required String spreadsheetId,
+    required String targetSheetTitle,
+    required String teacherEmail,
+  }) async {
+    try {
+      debugPrint('🔧 [MULTI-SAVE] Fixing educator spreadsheet protection for teacher: $teacherEmail');
+      
+      final spreadsheet = await sheetsApi.spreadsheets.get(spreadsheetId);
+
+      // Resolve target sheet ID by title
+      int? targetSheetId;
+      if (spreadsheet.sheets != null) {
+        for (final sh in spreadsheet.sheets!) {
+          final title = sh.properties?.title;
+          if (title == targetSheetTitle) {
+            targetSheetId = sh.properties?.sheetId;
+            break;
+          }
+        }
+      }
+
+      targetSheetId ??= spreadsheet.sheets?.first.properties?.sheetId ?? 0;
+
+      final requests = <sheets.Request>[];
+      
+      // Remove broad protection that blocks teacher writes
+      if (spreadsheet.sheets != null) {
+        for (final sheet in spreadsheet.sheets!) {
+          final protectedRanges = sheet.protectedRanges;
+          if (protectedRanges != null) {
+            for (final range in protectedRanges) {
+              final gridRange = range.range;
+              if (gridRange != null && 
+                  gridRange.sheetId == targetSheetId &&
+                  gridRange.endRowIndex != null && 
+                  gridRange.endRowIndex! > 10) { // Broad protection
+                
+                debugPrint('🔧 [MULTI-SAVE] Removing broad protection: ${range.protectedRangeId}');
+                requests.add(sheets.Request(
+                  deleteProtectedRange: sheets.DeleteProtectedRangeRequest(
+                    protectedRangeId: range.protectedRangeId!,
+                  ),
+                ));
+              }
+            }
+          }
+        }
+      }
+
+      // Add header-only protection that includes both educator and teacher as editors
+      requests.add(sheets.Request(
+        addProtectedRange: sheets.AddProtectedRangeRequest(
+          protectedRange: sheets.ProtectedRange(
+            range: sheets.GridRange(
+              sheetId: targetSheetId,
+              startRowIndex: 0,
+              endRowIndex: 1, // Only header row
+              startColumnIndex: 0,
+              endColumnIndex: GoogleSheetsService.hebrewHeaders.length,
+            ),
+            description: 'הגנה על שורת כותרות - מורה ומחנך יכולים לערוך',
+            warningOnly: false,
+            editors: sheets.Editors(
+              users: [teacherEmail], // Allow teacher to edit
+              domainUsersCanEdit: false,
+            ),
+          ),
+        ),
+      ));
+
+      if (requests.isNotEmpty) {
+        final batch = sheets.BatchUpdateSpreadsheetRequest(requests: requests);
+        await sheetsApi.spreadsheets.batchUpdate(batch, spreadsheetId);
+        debugPrint('🔧 [MULTI-SAVE] Fixed educator spreadsheet protection - teacher can now write to data rows');
+      }
+      
+    } catch (e) {
+      debugPrint('⚠️ [MULTI-SAVE] Failed to fix educator spreadsheet protection: $e');
     }
   }
 
@@ -615,11 +651,171 @@ class MultiDestinationSheetsService {
   /// Append record with intelligent sorting
   Future<bool> _appendWithSorting(sheets.SheetsApi sheetsApi, String spreadsheetId, StudentRecord record) async {
     try {
-      // For simplicity, just append to end
-      // In production, you'd implement the sorting logic here
-      final valueRange = sheets.ValueRange(
-        values: [record.toSheetRow()],
+      debugPrint('🔄 [MULTI-SAVE] Starting intelligent sorting for educator spreadsheet');
+      
+      // Find the correct position for chronological insertion
+      final insertPosition = await _findInsertPosition(sheetsApi, spreadsheetId, record);
+      
+      if (insertPosition == -1) {
+        // Append to end if no specific position found
+        debugPrint('🔄 [MULTI-SAVE] No specific position found, appending to end');
+        return await _appendToEnd(sheetsApi, spreadsheetId, record);
+      } else {
+        // Insert at the calculated position
+        debugPrint('🔄 [MULTI-SAVE] Inserting at chronological position: $insertPosition');
+        return await _insertAtPosition(sheetsApi, spreadsheetId, record, insertPosition);
+      }
+      
+    } catch (e) {
+      debugPrint('❌ [MULTI-SAVE] Error in intelligent sorting: $e');
+      // Fallback to simple append if sorting fails
+      return await _appendToEnd(sheetsApi, spreadsheetId, record);
+    }
+  }
+  
+  /// Find the correct chronological position for the record
+  Future<int> _findInsertPosition(sheets.SheetsApi sheetsApi, String spreadsheetId, StudentRecord record) async {
+    try {
+      final response = await sheetsApi.spreadsheets.values.get(
+        spreadsheetId,
+        'נתוני תלמידים!A2:D', // Only need first 4 columns for position calculation
       );
+      
+      if (response.values == null || response.values!.isEmpty) {
+        return 2; // Insert after header row if sheet is empty
+      }
+      
+      final recordDate = _parseDate(record.date);
+      if (recordDate == null) {
+        debugPrint('❌ [MULTI-SAVE] Could not parse record date: "${record.date}"');
+        return -1;
+      }
+      
+      debugPrint('🔄 [MULTI-SAVE] Finding position for: ${record.date} (class ${record.classNumber})');
+      debugPrint('🔄 [MULTI-SAVE] Checking against ${response.values!.length} existing rows');
+      
+      for (int i = 0; i < response.values!.length; i++) {
+        final row = response.values![i];
+        if (row.isEmpty) continue;
+        
+        final existingDateStr = row[0]?.toString() ?? '';
+        final existingDate = _parseDate(existingDateStr);
+        if (existingDate == null) {
+          debugPrint('⚠️ [MULTI-SAVE] Could not parse existing date: "$existingDateStr"');
+          continue;
+        }
+        
+        final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
+        
+        debugPrint('🔄 [MULTI-SAVE] Row ${i + 2}: $existingDateStr (class $existingClassNumber)');
+        
+        // Primary sort: by date (chronological)
+        if (recordDate.isBefore(existingDate)) {
+          debugPrint('✅ [MULTI-SAVE] Found chronological position by date at row ${i + 2}');
+          return i + 2;
+        }
+        
+        // Secondary sort: same date, sort by class number
+        if (recordDate.isAtSameMomentAs(existingDate)) {
+          if (record.classNumber < existingClassNumber) {
+            debugPrint('✅ [MULTI-SAVE] Found chronological position by class number at row ${i + 2}');
+            return i + 2;
+          }
+        }
+      }
+      
+      debugPrint('🔄 [MULTI-SAVE] Record belongs at end of chronological sequence');
+      return -1; // Insert at end
+      
+    } catch (e) {
+      debugPrint('❌ [MULTI-SAVE] Error finding insert position: $e');
+      return -1;
+    }
+  }
+  
+  /// Parse date string to DateTime for comparison
+  DateTime? _parseDate(String dateString) {
+    if (dateString.isEmpty) return null;
+    
+    try {
+      // Handle DD/MM/YYYY format (Hebrew/Israeli convention)
+      if (dateString.contains('/')) {
+        final parts = dateString.split('/');
+        if (parts.length == 3) {
+          final day = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final year = int.parse(parts[2]);
+          return DateTime(year, month, day);
+        }
+      }
+      // Fallback to standard parsing
+      return DateTime.parse(dateString);
+    } catch (e) {
+      debugPrint('📅 [MULTI-SAVE] Error parsing date "$dateString": $e');
+      return null;
+    }
+  }
+  
+  /// Insert record at specific position
+  Future<bool> _insertAtPosition(sheets.SheetsApi sheetsApi, String spreadsheetId, StudentRecord record, int position) async {
+    try {
+      // Get the educator's sheet ID
+      final spreadsheet = await sheetsApi.spreadsheets.get(spreadsheetId);
+      int? sheetId;
+      
+      if (spreadsheet.sheets != null) {
+        for (final sheet in spreadsheet.sheets!) {
+          if (sheet.properties?.title == 'נתוני תלמידים') {
+            sheetId = sheet.properties?.sheetId;
+            break;
+          }
+        }
+      }
+      sheetId ??= 0; // Fallback to first sheet
+      
+      // Insert empty row at target position
+      final insertRequest = sheets.Request(
+        insertRange: sheets.InsertRangeRequest(
+          range: sheets.GridRange(
+            sheetId: sheetId,
+            startRowIndex: position - 1, // 0-indexed
+            endRowIndex: position,
+            startColumnIndex: 0,
+            endColumnIndex: GoogleSheetsService.hebrewHeaders.length,
+          ),
+          shiftDimension: 'ROWS',
+        ),
+      );
+      
+      await sheetsApi.spreadsheets.batchUpdate(
+        sheets.BatchUpdateSpreadsheetRequest(requests: [insertRequest]),
+        spreadsheetId,
+      );
+      
+      // Populate the new row with data
+      final range = 'נתוני תלמידים!A$position:L$position';
+      final valueRange = sheets.ValueRange(values: [record.toSheetRow()]);
+      
+      await sheetsApi.spreadsheets.values.update(
+        valueRange,
+        spreadsheetId,
+        range,
+        valueInputOption: 'RAW',
+      );
+      
+      debugPrint('✅ [MULTI-SAVE] Successfully inserted record at position $position');
+      return true;
+      
+    } catch (e) {
+      debugPrint('❌ [MULTI-SAVE] Error inserting at position: $e');
+      return false;
+    }
+  }
+  
+  /// Simple append to end as fallback
+  Future<bool> _appendToEnd(sheets.SheetsApi sheetsApi, String spreadsheetId, StudentRecord record) async {
+    try {
+      final valueRange = sheets.ValueRange(values: [record.toSheetRow()]);
       
       await sheetsApi.spreadsheets.values.append(
         valueRange,
@@ -629,9 +825,10 @@ class MultiDestinationSheetsService {
         insertDataOption: 'INSERT_ROWS',
       );
       
+      debugPrint('✅ [MULTI-SAVE] Successfully appended record to end');
       return true;
     } catch (e) {
-      debugPrint('❌ [MULTI-SAVE] Error appending row: $e');
+      debugPrint('❌ [MULTI-SAVE] Error appending to end: $e');
       return false;
     }
   }

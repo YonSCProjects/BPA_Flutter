@@ -107,14 +107,22 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   Future<void> _findOrCreateSpreadsheet() async {
+    debugPrint('🔍 [INIT] Starting spreadsheet discovery process...');
+    
+    // Step 1: Look for user's own BPApp spreadsheet
     await _findExistingSpreadsheet();
     
     if (_spreadsheetId == null) {
-      // Check if spreadsheet exists in trash before creating new one
+      debugPrint('🔍 [INIT] No owned spreadsheet found - checking trash...');
+      
+      // Step 2: Check if spreadsheet exists in trash before creating new one
       final recoveredFromTrash = await _checkAndRecoverFromTrash();
       if (!recoveredFromTrash) {
+        debugPrint('🔍 [INIT] No recoverable spreadsheet found - creating new one...');
         await _createSpreadsheet();
       }
+    } else {
+      debugPrint('✅ [INIT] Using existing spreadsheet: $_spreadsheetId');
     }
     
     // Get sheet ID for API operations
@@ -122,27 +130,52 @@ class GoogleSheetsService extends ChangeNotifier {
       await _getSheetId();
     }
     
-    // Ensure existing spreadsheet is protected
+    // Ensure existing spreadsheet has proper protection
     if (_spreadsheetId != null) {
-      await _protectSpreadsheet();
+      await _fixExistingProtection();
     }
+    
+    debugPrint('✅ [INIT] Spreadsheet setup complete: $_spreadsheetId');
   }
 
   Future<void> _findExistingSpreadsheet() async {
     if (_driveApi == null) return;
 
     try {
+      final currentUser = _authService.currentUser;
+      if (currentUser?.email == null) {
+        debugPrint('Cannot find existing spreadsheet: no current user email');
+        return;
+      }
+
+      final userEmail = currentUser!.email;
+      debugPrint('🔍 [INIT] Looking for BPApp spreadsheet owned by: $userEmail');
+
+      // Search for BPApp spreadsheet OWNED by current user (not shared)
       final response = await _driveApi!.files.list(
-        q: "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+        q: "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and '$userEmail' in owners",
         spaces: 'drive',
+        $fields: 'files(id,name,owners)',
       );
 
+      debugPrint('🔍 [INIT] Found ${response.files?.length ?? 0} spreadsheets owned by user');
+
       if (response.files != null && response.files!.isNotEmpty) {
-        _spreadsheetId = response.files!.first.id!;
-        debugPrint('Found existing spreadsheet: $_spreadsheetId');
+        // Verify the first result is actually owned by the current user
+        final file = response.files!.first;
+        final isOwnedByCurrentUser = file.owners?.any((owner) => owner.emailAddress == userEmail) ?? false;
+        
+        if (isOwnedByCurrentUser) {
+          _spreadsheetId = file.id!;
+          debugPrint('✅ [INIT] Found existing spreadsheet owned by user: $_spreadsheetId');
+        } else {
+          debugPrint('⚠️ [INIT] Found spreadsheet but not owned by current user - will create new one');
+        }
+      } else {
+        debugPrint('ℹ️ [INIT] No existing BPApp spreadsheet found owned by user - will create new one');
       }
     } catch (e) {
-      debugPrint('Error finding existing spreadsheet: $e');
+      debugPrint('❌ [INIT] Error finding existing spreadsheet: $e');
     }
   }
 
@@ -338,6 +371,96 @@ class GoogleSheetsService extends ChangeNotifier {
     }
   }
 
+  /// Fix existing spreadsheet protection to allow app writes to data rows
+  Future<void> _fixExistingProtection() async {
+    if (_sheetsApi == null || _spreadsheetId == null) return;
+
+    try {
+      final currentUser = _authService.currentUser;
+      if (currentUser?.email == null) {
+        debugPrint('Cannot fix protection: no current user email');
+        return;
+      }
+
+      final userEmail = currentUser!.email;
+      debugPrint('🔧 [PROTECTION] Fixing existing protection for: $userEmail');
+
+      // Get current spreadsheet structure including existing protected ranges
+      final spreadsheet = await _sheetsApi!.spreadsheets.get(_spreadsheetId!);
+      
+      final requests = <sheets.Request>[];
+      
+      // Find and remove existing broad protection that blocks data writes
+      if (spreadsheet.sheets != null) {
+        for (final sheet in spreadsheet.sheets!) {
+          final protectedRanges = sheet.protectedRanges;
+          if (protectedRanges != null) {
+            for (final range in protectedRanges) {
+              final gridRange = range.range;
+              if (gridRange != null && 
+                  gridRange.sheetId == (_sheetId ?? 0) &&
+                  gridRange.endRowIndex != null && 
+                  gridRange.endRowIndex! > 10) { // Broad protection (more than just headers)
+                
+                debugPrint('🔧 [PROTECTION] Removing broad protection range: ${range.protectedRangeId}');
+                
+                // Remove the problematic protection
+                requests.add(sheets.Request(
+                  deleteProtectedRange: sheets.DeleteProtectedRangeRequest(
+                    protectedRangeId: range.protectedRangeId!,
+                  ),
+                ));
+              }
+            }
+          }
+        }
+      }
+      
+      // Add proper header-only protection
+      requests.add(sheets.Request(
+        addProtectedRange: sheets.AddProtectedRangeRequest(
+          protectedRange: sheets.ProtectedRange(
+            range: sheets.GridRange(
+              sheetId: _sheetId ?? 0,
+              startRowIndex: 0, // Row 1 (0-indexed)
+              endRowIndex: 1,   // Only protect the header row
+              startColumnIndex: 0,
+              endColumnIndex: hebrewHeaders.length,
+            ),
+            description: 'הגנה על שורת כותרות BPApp - רק האפליקציה יכולה לערוך',
+            warningOnly: false,
+            editors: sheets.Editors(
+              users: [userEmail],
+              domainUsersCanEdit: false,
+            ),
+          ),
+        ),
+      ));
+
+      if (requests.isNotEmpty) {
+        final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
+          requests: requests,
+        );
+
+        await _sheetsApi!.spreadsheets.batchUpdate(
+          batchUpdateRequest,
+          _spreadsheetId!,
+        );
+
+        debugPrint('🔧 [PROTECTION] Successfully fixed spreadsheet protection - data rows now writable');
+      } else {
+        debugPrint('🔧 [PROTECTION] No protection changes needed');
+      }
+      
+    } catch (e) {
+      debugPrint('⚠️ [PROTECTION] Could not fix existing protection: $e');
+      debugPrint('ℹ️ [PROTECTION] Existing spreadsheet has protection that cannot be modified by app');
+      debugPrint('ℹ️ [PROTECTION] App will work with existing protection as-is');
+      // Don't try to add more protection if we can't fix existing protection
+      // The spreadsheet already has some form of protection in place
+    }
+  }
+
   Future<void> _protectSpreadsheet() async {
     if (_sheetsApi == null || _spreadsheetId == null) return;
 
@@ -352,21 +475,21 @@ class GoogleSheetsService extends ChangeNotifier {
       final userEmail = currentUser!.email;
       debugPrint('Protecting spreadsheet with edit access for: $userEmail');
 
-      // Create protection request that makes the entire sheet read-only for everyone except the app/current user
+      // Only protect the header row (row 1) - leave data rows unprotected for app to write
       final protectionRequest = sheets.Request(
         addProtectedRange: sheets.AddProtectedRangeRequest(
           protectedRange: sheets.ProtectedRange(
             range: sheets.GridRange(
               sheetId: _sheetId ?? 0,
-              startRowIndex: 0,
-              endRowIndex: 1000, // Protect many rows
+              startRowIndex: 0, // Row 1 (0-indexed)
+              endRowIndex: 1,   // Only protect the header row
               startColumnIndex: 0,
               endColumnIndex: hebrewHeaders.length,
             ),
-            description: 'הגנה על גיליון BPApp - רק האפליקציה יכולה לערוך',
-            warningOnly: false, // Hard protection, not just warning
+            description: 'הגנה על שורת כותרות BPApp - רק האפליקציה יכולה לערוך',
+            warningOnly: false, // Hard protection for headers
             editors: sheets.Editors(
-              users: [userEmail], // Only the authenticated user (app) can edit
+              users: [userEmail], // Only the authenticated user (app) can edit headers
               domainUsersCanEdit: false,
             ),
           ),
@@ -382,7 +505,7 @@ class GoogleSheetsService extends ChangeNotifier {
         _spreadsheetId!,
       );
 
-      debugPrint('Successfully protected BPApp spreadsheet - users cannot edit manually');
+      debugPrint('Successfully protected BPApp spreadsheet headers - data rows remain writable');
     } catch (e) {
       debugPrint('Warning: Could not protect spreadsheet (this is non-critical): $e');
       // Don't throw error as protection is nice-to-have but not critical
@@ -808,10 +931,17 @@ class GoogleSheetsService extends ChangeNotifier {
         valueInputOption: 'RAW',
       );
 
-      debugPrint('Inserted record at position $rowPosition');
+      debugPrint('✅ [SAVE] Inserted record at position $rowPosition');
       return true;
     } catch (e) {
-      debugPrint('Error inserting record at position $rowPosition: $e');
+      debugPrint('❌ [SAVE] Error inserting record at position $rowPosition: $e');
+      
+      // Check if this is a protection error
+      if (e.toString().contains('protected cell') || e.toString().contains('protection')) {
+        debugPrint('🔧 [SAVE] Protection error on insert - trying fallback append');
+        return await _appendToEndWithFallback(record);
+      }
+      
       return false;
     }
   }
@@ -832,9 +962,53 @@ class GoogleSheetsService extends ChangeNotifier {
         insertDataOption: 'INSERT_ROWS',
       );
 
+      debugPrint('✅ [SAVE] Successfully appended record to end');
       return true;
     } catch (e) {
-      debugPrint('Error appending record to end: $e');
+      debugPrint('❌ [SAVE] Error appending record to end: $e');
+      
+      // Check if this is a protection error
+      if (e.toString().contains('protected cell') || e.toString().contains('protection')) {
+        debugPrint('🔧 [SAVE] Protection error detected - trying fallback approach');
+        return await _appendToEndWithFallback(record);
+      }
+      
+      return false;
+    }
+  }
+  
+  /// Fallback append method that handles protection issues
+  Future<bool> _appendToEndWithFallback(StudentRecord record) async {
+    try {
+      // Try a simple values update to a specific range instead of append
+      // First, find the next empty row
+      final response = await _sheetsApi!.spreadsheets.values.get(
+        _spreadsheetId!,
+        '$worksheetName!A:A',
+      );
+      
+      int nextRow = 2; // Start after header
+      if (response.values != null) {
+        nextRow = response.values!.length + 1;
+      }
+      
+      final range = '$worksheetName!A$nextRow:L$nextRow';
+      final valueRange = sheets.ValueRange(
+        values: [record.toSheetRow()],
+      );
+      
+      await _sheetsApi!.spreadsheets.values.update(
+        valueRange,
+        _spreadsheetId!,
+        range,
+        valueInputOption: 'RAW',
+      );
+      
+      debugPrint('✅ [SAVE] Successfully saved using fallback method at row $nextRow');
+      return true;
+      
+    } catch (e) {
+      debugPrint('❌ [SAVE] Fallback append also failed: $e');
       return false;
     }
   }
