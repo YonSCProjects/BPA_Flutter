@@ -9,6 +9,8 @@ import '../widgets/hebrew_number_picker.dart';
 import '../widgets/hebrew_date_picker.dart';
 import '../widgets/score_display.dart';
 import '../providers/form_provider.dart';
+import '../../core/educator_mappings.dart';
+import 'educator_settings_page.dart';
 
 class StudentFormPage extends StatefulWidget {
   const StudentFormPage({super.key});
@@ -133,9 +135,33 @@ class _StudentFormPageState extends State<StudentFormPage> {
                   onSelected: (value) async {
                     if (value == 'signout') {
                       await authService.signOut();
+                    } else if (value == 'educator_settings') {
+                      // Navigate to educator settings page
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EducatorSettingsPage(),
+                        ),
+                      );
+                      // Reload mappings if settings were changed
+                      if (result == true) {
+                        await EducatorMappings.initialize();
+                        setState(() {}); // Refresh UI to show updated indicators
+                      }
                     }
                   },
                   itemBuilder: (context) => [
+                    const PopupMenuItem<String>(
+                      value: 'educator_settings',
+                      child: Row(
+                        children: [
+                          Icon(Icons.share),
+                          SizedBox(width: 8),
+                          Text('הגדרות שיתוף למדריכים'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
                     PopupMenuItem<String>(
                       value: 'signout',
                       child: Row(
@@ -370,19 +396,49 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Widget _buildClassNameField(FormProvider formProvider) {
-    return HebrewTextField(
-      label: 'שם הכיתה',
-      value: formProvider.currentRecord.className,
-      onChanged: (value) {
-        formProvider.updateField('className', value);
-        _checkForExistingRecord(formProvider);
-      },
-      suggestions: _sheetsService.getClassSuggestions,
-      isRequired: true,
-      onSuggestionSelected: (suggestion) {
-        formProvider.updateField('className', suggestion);
-        _checkForExistingRecord(formProvider);
-      },
+    final hasEducator = EducatorMappings.hasEducator(formProvider.currentRecord.className);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HebrewTextField(
+          label: 'שם הכיתה',
+          value: formProvider.currentRecord.className,
+          onChanged: (value) {
+            formProvider.updateField('className', value);
+            _checkForExistingRecord(formProvider);
+          },
+          suggestions: _sheetsService.getClassSuggestions,
+          isRequired: true,
+          onSuggestionSelected: (suggestion) {
+            formProvider.updateField('className', suggestion);
+            _checkForExistingRecord(formProvider);
+          },
+        ),
+        if (hasEducator)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, right: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.share,
+                  size: 14,
+                  color: Colors.blue.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'הנתונים ישותפו עם המדריך',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue.shade700,
+                  ),
+                  textDirection: TextDirection.rtl,
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -596,13 +652,23 @@ class _StudentFormPageState extends State<StudentFormPage> {
       
       if (mounted) {
         if (success) {
+          // Check if this class has an associated educator
+          final className = formProvider.currentRecord.className;
+          final hasEducator = EducatorMappings.hasEducator(className);
+          
+          String message = 'הרשומה נשמרה בהצלחה';
+          if (hasEducator) {
+            message += '\n✅ נשלח גם למדריך של כיתה $className';
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                'הרשומה נשמרה בהצלחה',
+                message,
                 textDirection: TextDirection.rtl,
               ),
               backgroundColor: Colors.green,
+              duration: Duration(seconds: hasEducator ? 4 : 2),
             ),
           );
           formProvider.resetForm();

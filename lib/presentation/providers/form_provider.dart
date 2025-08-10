@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../data/models/student_record.dart';
 import '../../services/google_sheets_service.dart';
+import '../../services/multi_destination_sheets_service.dart';
+import '../../services/google_auth_service.dart';
 
 class FormProvider extends ChangeNotifier {
   StudentRecord _currentRecord = StudentRecord.empty();
@@ -135,7 +137,16 @@ class FormProvider extends ChangeNotifier {
 
     try {
       final recordToSave = _currentRecord.withCalculatedScore();
-      final success = await sheetsService.saveRecord(recordToSave);
+      
+      // Check if we need multi-destination saving
+      final authService = GoogleAuthService();
+      final multiService = MultiDestinationSheetsService(
+        primaryService: sheetsService,
+        authService: authService,
+      );
+      
+      // Use multi-destination service which handles both primary and educator sheets
+      final success = await multiService.saveRecord(recordToSave);
       
       if (success) {
         debugPrint('Record saved successfully');

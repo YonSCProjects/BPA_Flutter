@@ -4,12 +4,18 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/hebrew_theme.dart';
 import 'core/constants/hebrew_strings.dart';
+import 'core/educator_mappings.dart';
 import 'services/google_auth_service.dart';
 import 'services/google_sheets_service.dart';
 import 'presentation/providers/form_provider.dart';
 import 'presentation/pages/student_form_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize educator mappings from shared preferences
+  await EducatorMappings.initialize();
+  
   runApp(const BPApp());
 }
 
