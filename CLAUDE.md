@@ -998,3 +998,10 @@ The BPApp is now production-ready with enterprise-grade offline capabilities and
 - ✅ **NEW**: Automatic protection management and fallback sheet creation
 - ✅ Same familiar interface with enhanced reliability and sharing capabilities
 - ✅ Self-contained APK requires no external setup from users
+
+### 🔮 NEXT PHASE: Service Account & Firebase System
+**Development Plan**: See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for complete implementation plan.
+- **Target**: Admin-controlled Firebase database with Google Service Account
+- **Benefits**: Zero manual sharing, dropdown class selection, centralized management
+- **Branch**: `feature/service-account-firebase-system`
+- **Rollback**: Tagged stable version `v3.0-last-stable-version` always available
