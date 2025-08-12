@@ -22,6 +22,8 @@ The development is done with claude code on windows.
 - **SQLite Offline-First**: Local SQLite database provides instant data saves without network dependency
 - **Background Sync**: Automatic synchronization with Google Sheets when connectivity available
 - **Personal Google Sheets Integration**: Each user maintains private "BPApp" spreadsheet in Google Drive
+- **Multi-Destination Saving**: Teachers can configure records to save to both their own and educator spreadsheets
+- **Intelligent Spreadsheet Discovery**: Advanced search strategies to find shared educator spreadsheets
 - **Spreadsheet Protection**: BPApp spreadsheets are read-only protected - only app can modify data
 - **Automatic Authentication**: App checks Google Drive connection on startup
 - **Real-time Sync**: Direct Google Sheets API integration with intelligent retry logic
@@ -205,6 +207,7 @@ lib/
 ├── main.dart                    # App entry point with Material App setup
 ├── core/                        # Core functionality and utilities
 │   ├── constants/              # App constants, strings, colors
+│   ├── educator_mappings.dart   # Class-to-educator mapping configuration
 │   ├── utils/                  # Helper functions and utilities
 │   ├── errors/                 # Custom error classes and handling
 │   └── theme/                  # App theme configuration with RTL support
@@ -218,13 +221,17 @@ lib/
 │   └── usecases/               # Business use cases
 ├── presentation/               # UI layer
 │   ├── pages/                  # Screen widgets
+│   │   ├── educator_settings_page.dart  # NEW: Configure class-educator mappings
+│   │   ├── home_page.dart      # Main navigation page
+│   │   └── student_form_page.dart  # Primary data entry form
 │   ├── widgets/                # Reusable UI components
 │   ├── providers/              # State management providers
 │   └── theme/                  # UI theme and styling
 └── services/                   # External services
     ├── google_auth_service.dart
     ├── google_sheets_service.dart
-    └── storage_service.dart
+    ├── local_storage_service.dart        # SQLite offline storage
+    └── multi_destination_sheets_service.dart  # NEW: Multi-destination saving
 
 test/
 ├── widget_test.dart            # Widget tests
@@ -254,6 +261,14 @@ test/
 - `_findInsertPosition()`: Intelligently determines chronological insertion point for new records
 - `_insertRecordAtPosition()`: Inserts records maintaining date/class number sorting
 - `_protectSpreadsheet()`: **NEW** - Makes BPApp spreadsheets read-only protected
+
+### Multi-Destination Service Methods (NEW)
+- `saveRecord()`: **ENHANCED** - Saves to both teacher and educator spreadsheets automatically
+- `_findOrRequestEducatorSpreadsheet()`: Advanced search strategies for educator spreadsheets
+- `_saveToEducatorSpreadsheet()`: Handles saving records to educator's shared spreadsheet
+- `_fixEducatorSpreadsheetProtection()`: Auto-configures protection to allow teacher writes
+- `_appendToFallbackSheet()`: Creates fallback "Teacher Input" sheet when main sheet is protected
+- `clearEducatorCache()`: Clears cached educator spreadsheet references
 
 ### Authentication Flow
 ```dart
@@ -297,6 +312,185 @@ test/
 
 ### Data Schema
 | תאריך | שם התלמיד | שם הכיתה | מספר השיעור | כניסה | שהייה | אווירה | ביצוע | מטרה אישית | בונוס | סה"כ | הערות |
+
+## Multi-Destination Saving Feature
+
+### Overview
+The app supports **multi-destination saving** where teachers can configure their records to be automatically saved to both their own spreadsheet AND an educator's spreadsheet. This enables seamless collaboration between professional teachers and educational supervisors.
+
+### Core Components
+
+#### EducatorMappings (`lib/core/educator_mappings.dart`)
+- **Class-to-Educator Configuration**: Maps specific class names to educator email addresses
+- **Persistent Storage**: Mappings stored in SharedPreferences for persistence across sessions
+- **Initialization System**: Async initialization ensures mappings are loaded before use
+- **Real-time Updates**: Changes propagate immediately to multi-destination service
+
+#### Key Methods
+- `initialize()`: Loads mappings from persistent storage on app startup
+- `getEducatorEmail(className)`: Returns associated educator email for a class
+- `hasEducator(className)`: Checks if a class has an assigned educator
+- `updateMappings(newMappings)`: Updates and persists new class-educator mappings
+- `getMappings()`: Returns current mappings for settings UI
+
+### MultiDestinationSheetsService Architecture
+
+#### Core Functionality
+```dart
+MultiDestinationSheetsService {
+  GoogleSheetsService primaryService;     // Teacher's own spreadsheet
+  Map<String, String> educatorSpreadsheetIds;  // Cache of educator spreadsheet IDs
+  GoogleAuthService authService;          // Authentication management
+}
+```
+
+#### Save Process Flow
+```
+1. Teacher submits record
+   ↓
+2. ALWAYS save to teacher's own spreadsheet (primary success)
+   ↓
+3. Check if class has associated educator (EducatorMappings)
+   ↓
+4. IF educator exists → Find/access educator's BPApp spreadsheet
+   ↓
+5. Apply intelligent sorting and save to educator spreadsheet
+   ↓
+6. Return success based on primary save (educator save is bonus)
+```
+
+### Advanced Spreadsheet Discovery
+
+#### Multi-Strategy Search System
+The service implements sophisticated spreadsheet discovery using three fallback strategies:
+
+**Strategy 1: Shared BPApp Search**
+- Query: `sharedWithMe and name contains 'BPApp' and mimeType='application/vnd.google-apps.spreadsheet'`
+- Filters by educator ownership and edit permissions
+- Most reliable method for properly shared spreadsheets
+
+**Strategy 2: Accessible BPApp Search**  
+- Query: `name contains 'BPApp' and mimeType='application/vnd.google-apps.spreadsheet'`
+- Broader search across all accessible BPApp spreadsheets
+- Fallback when sharedWithMe doesn't capture all cases
+
+**Strategy 3: Legacy Owner Search**
+- Query: `name contains 'BPApp' and '[educator_email]' in owners`
+- Direct owner-based search for older sharing configurations
+- Final fallback for legacy setups
+
+#### Protection Management System
+```dart
+_fixEducatorSpreadsheetProtection() {
+  // Remove broad protections that block teacher writes
+  // Add header-only protection with teacher as allowed editor
+  // Maintains data integrity while enabling collaboration
+}
+```
+
+### Fallback Mechanisms
+
+#### Unprotected Helper Sheet
+When the main educator sheet is protected and blocks writes:
+1. **Create Fallback Sheet**: "קלט מהמורה" (Teacher Input) 
+2. **Preserve Data**: Same Hebrew headers and RTL formatting
+3. **Maintain Functionality**: Full record tracking in dedicated sheet
+4. **Zero User Impact**: Teachers never see save failures
+
+#### Error Handling & Diagnostics
+- **Comprehensive Logging**: Detailed debug output for troubleshooting
+- **Hebrew Error Messages**: User-friendly error reporting in Hebrew
+- **Diagnostic Guidance**: Automatic suggestions for fixing sharing issues
+- **Graceful Degradation**: App continues working if educator saves fail
+
+### Settings & Configuration
+
+#### EducatorSettingsPage (`lib/presentation/pages/educator_settings_page.dart`)
+- **Hebrew RTL Interface**: Complete Hebrew UI with proper text direction
+- **Class-Educator Mapping**: Input fields for class names and educator emails
+- **Real-time Validation**: Email format validation and duplicate checking
+- **Persistent Storage**: Automatic saving to SharedPreferences
+- **Visual Feedback**: Success/error notifications in Hebrew
+
+#### Settings Features
+- **Add Mappings**: Pair class names with educator email addresses
+- **Remove Mappings**: Delete obsolete class-educator associations
+- **Email Validation**: Basic validation for email format correctness
+- **Sharing Instructions**: Built-in guidance for educators on spreadsheet sharing
+
+### User Experience Enhancements
+
+#### Seamless Integration
+- **Zero Breaking Changes**: Existing single-destination workflow unchanged
+- **Enhanced Notifications**: Status indicators show sharing success
+- **Background Processing**: Multi-destination saves don't block UI
+- **Intelligent Caching**: Educator spreadsheet IDs cached for performance
+
+#### Visual Indicators
+- **Save Status Display**: Clear indication when records save to both destinations
+- **Sharing Configuration**: Visual cues about which classes have educators
+- **Error Recovery**: Helpful guidance when educator access is needed
+
+### Technical Implementation
+
+#### Service Integration
+```dart
+FormProvider.saveRecord() {
+  // Uses MultiDestinationSheetsService automatically
+  // Maintains same boolean return contract
+  // Enhanced with educator sharing capability
+}
+```
+
+#### Authentication & Permissions
+- **Google Drive Metadata Scope**: Enhanced OAuth scope for file metadata access
+- **Automatic Permission Fixes**: Auto-adds teacher as editor to protected ranges  
+- **Educator Verification**: Confirms spreadsheet ownership before saving
+- **Security Validation**: Prevents accidental saves to wrong spreadsheets
+
+#### Performance Optimizations
+- **Parallel Operations**: Primary and educator saves run concurrently when possible
+- **Intelligent Caching**: Spreadsheet IDs cached to avoid repeated searches
+- **Optimistic Responses**: Teachers get immediate confirmation from primary save
+- **Background Sync**: Educator saves complete asynchronously
+
+### Data Consistency & Integrity
+
+#### 4-Field Matching Logic
+Both primary and educator spreadsheets use identical matching logic:
+- **Same Record Detection**: תאריך + שם התלמיד + שם הכיתה + מספר השיעור
+- **Update vs Create**: Consistent behavior across both destinations
+- **Chronological Sorting**: Intelligent insertion maintains date/class order
+
+#### Protection Schemes
+- **Header Protection**: Headers remain protected in both spreadsheets  
+- **Data Row Access**: Teachers can write to data rows in educator sheets
+- **Fallback Sheets**: Dedicated teacher input areas when needed
+- **Ownership Verification**: Confirms correct educator ownership before writes
+
+### Troubleshooting & Support
+
+#### Common Issues & Solutions
+1. **Educator Spreadsheet Not Found**
+   - Educator needs to share their BPApp spreadsheet with teacher
+   - Teacher email must be added as Editor (not Viewer)
+   - Both users must have BPApp spreadsheets with standard naming
+
+2. **Permission Denied Errors**
+   - Service automatically attempts to fix protection settings
+   - Fallback to dedicated "Teacher Input" sheet if blocked
+   - Educators can manually adjust sharing permissions if needed
+
+3. **Sync Status Monitoring**
+   - Clear indicators show multi-destination save status
+   - Failed educator saves don't impact primary data safety
+   - Manual retry capabilities for failed educator syncs
+
+#### Debug & Diagnostics
+- **Comprehensive Logging**: Detailed debug output with prefixed identifiers
+- **Search Strategy Reporting**: Shows which discovery method succeeded
+- **Permission Analysis**: Reports on spreadsheet access and edit capabilities
+- **Hebrew Error Messages**: User-friendly error reporting and guidance
 
 ## SQLite Offline-First Storage
 
@@ -745,43 +939,62 @@ Current versions in pubspec.yaml:
    - Automatic trash recovery system
    - Enhanced authentication and error handling with Hebrew messages
 
-3. **Data Safety & Reliability**
+3. **Multi-Destination Saving System** ⭐ **NEW**
+   - Teachers can save records to both their own AND educator spreadsheets simultaneously
+   - Class-to-educator mapping configuration with persistent storage
+   - Advanced 3-strategy spreadsheet discovery system
+   - Automatic protection management and fallback sheet creation
+   - Hebrew RTL settings page for educator configuration
+   - Intelligent caching and performance optimizations
+
+4. **Data Safety & Reliability**
    - Multiple fallback layers prevent any data loss scenarios
-   - Same 4-field matching logic maintained across local and remote storage
+   - Same 4-field matching logic maintained across local, remote, and educator storage
    - Feature flags allow safe rollback if needed
    - Graceful degradation when components fail
 
-4. **Self-Contained Installation**
+5. **Self-Contained Installation**
    - All SQLite functionality built into APK - zero external dependencies
    - Cross-platform support (Android/iOS) with native SQLite integration
    - No additional apps or setup required for end users
 
 ### 🔧 CURRENT ARCHITECTURE
 ```
-Teacher Input → FormProvider → GoogleSheetsService.saveRecord()
+Teacher Input → FormProvider → MultiDestinationSheetsService.saveRecord()
                                     ↓
                              [ENHANCED METHOD]
                                     ↓
-                    1. LocalStorageService.saveRecord() (Instant)
-                                    ↓
-                    2. Background Google Sheets sync
-                                    ↓
-                    3. Update sync status (pending/synced/failed)
-                                    ↓
-                    4. Return success (based on local save)
+        ┌─────────────────────────────────────────────────────────┐
+        │                                                         │
+        ▼                                                         ▼
+1. PRIMARY: GoogleSheetsService.saveRecord()          2. EDUCATOR: Check EducatorMappings
+        ↓                                                         ↓
+   LocalStorageService.saveRecord() (Instant)         Find/Access Educator Spreadsheet
+        ↓                                                         ↓
+   Background Google Sheets sync                      Save with Intelligent Sorting
+        ↓                                                         ↓
+   Update sync status                                 Fallback to "Teacher Input" sheet
+        ↓                                                         ↓
+   Return success (primary)          ←──────────────── Complete (background)
 ```
 
 ### 📁 KEY FILES TO UNDERSTAND
 - `lib/services/local_storage_service.dart` - SQLite offline storage implementation
 - `lib/services/google_sheets_service.dart` - Enhanced with offline-first saving
+- `lib/services/multi_destination_sheets_service.dart` - **NEW**: Multi-destination saving orchestrator
+- `lib/core/educator_mappings.dart` - **NEW**: Class-to-educator mapping configuration
+- `lib/presentation/pages/educator_settings_page.dart` - **NEW**: Hebrew RTL settings interface
 - `lib/presentation/providers/form_provider.dart` - Unchanged, works with enhanced services
-- `lib/data/models/student_record.dart` - Core data model used by both local and remote storage
+- `lib/data/models/student_record.dart` - Core data model used by all storage systems
 - `pubspec.yaml` - Updated dependencies including sqflite and path packages
 
 ### 🚀 READY FOR PRODUCTION
-The BPApp is now production-ready with enterprise-grade offline capabilities:
+The BPApp is now production-ready with enterprise-grade offline capabilities and advanced collaboration features:
 - ✅ Teachers never lose data due to connectivity issues
 - ✅ Instant save confirmation improves user experience  
 - ✅ Background sync maintains Google Sheets integration
-- ✅ Same familiar interface with enhanced reliability
+- ✅ **NEW**: Multi-destination saving enables seamless teacher-educator collaboration
+- ✅ **NEW**: Advanced spreadsheet discovery with 3-strategy fallback system
+- ✅ **NEW**: Automatic protection management and fallback sheet creation
+- ✅ Same familiar interface with enhanced reliability and sharing capabilities
 - ✅ Self-contained APK requires no external setup from users

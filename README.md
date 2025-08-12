@@ -12,9 +12,12 @@ BPApp enables educators to efficiently track student progress using a comprehens
 - **Smart Record Matching**: Automatic UPDATE vs CREATE logic based on 4-field combination
 - **Real-time Score Calculation**: Live calculation of 6 numeric inputs (max 11 points)
 - **Google Sheets Integration**: Personal "BPApp" spreadsheet for each user
+- **Multi-Destination Saving**: ⭐ **NEW** - Save records to both teacher and educator spreadsheets
+- **Offline-First Storage**: SQLite local database with background sync
 - **Full Hebrew RTL Support**: Complete right-to-left interface with proper text direction
 - **Smart Defaults**: Auto-population of current date and sequential class numbers
 - **Autocomplete**: Student and class name suggestions from previous entries
+- **Educator Collaboration**: Class-to-educator mapping with automatic sharing
 
 ## 📱 Input Fields (Hebrew)
 
@@ -35,9 +38,11 @@ BPApp enables educators to efficiently track student progress using a comprehens
 - **Framework**: Flutter (cross-platform iOS/Android)
 - **Authentication**: Google OAuth 2.0
 - **Backend**: Google Sheets API v4
+- **Local Storage**: SQLite database for offline-first data storage
 - **Language**: Complete Hebrew with RTL support
 - **State Management**: Provider pattern
 - **Storage**: Secure token storage with flutter_secure_storage
+- **Multi-Destination**: Advanced spreadsheet discovery and sharing
 
 ## 📋 Development Commands
 
@@ -106,7 +111,9 @@ flutter clean
 3. **Auto-Creation**: Create "BPApp" with Hebrew headers if missing
 4. **Record Matching**: 4-field combination check (Date + Student + Class + Number)
 5. **Smart Logic**: UPDATE existing row or CREATE new based on match results
-6. **Real-time Sync**: Immediate Google Sheets synchronization
+6. **Multi-Destination Save**: ⭐ **NEW** - Save to both teacher and educator spreadsheets
+7. **Offline-First Storage**: Instant SQLite save with background Google Sheets sync
+8. **Real-time Sync**: Automatic synchronization with intelligent retry logic
 
 ## 🌐 Hebrew RTL Implementation
 
@@ -129,11 +136,18 @@ flutter clean
 ```
 lib/
 ├── main.dart                    # App entry point with Hebrew RTL setup
-├── core/                        # Core functionality and utilities
+├── core/
+│   └── educator_mappings.dart   # ⭐ NEW: Class-to-educator mapping
 ├── data/                        # Data models and repositories
 ├── domain/                      # Business logic layer
-├── presentation/                # UI screens and widgets
-└── services/                    # Google Auth & Sheets services
+├── presentation/
+│   └── pages/
+│       └── educator_settings_page.dart  # ⭐ NEW: Settings for educator sharing
+└── services/
+    ├── google_auth_service.dart
+    ├── google_sheets_service.dart
+    ├── local_storage_service.dart       # ⭐ NEW: SQLite offline storage
+    └── multi_destination_sheets_service.dart  # ⭐ NEW: Multi-destination saving
 ```
 
 ## 🧪 Testing
@@ -154,9 +168,26 @@ Real-time calculation of fields 5-10:
 - **בונוס (Bonus)**: 0-1 points
 - **Maximum Total**: 11 points
 
+## 🔄 Multi-Destination Saving
+
+### Teacher-Educator Collaboration
+Teachers can configure classes to automatically share records with educators:
+
+1. **Configure Mappings**: Use the settings page to map class names to educator emails
+2. **Automatic Sharing**: Records save to both teacher and educator spreadsheets
+3. **Smart Discovery**: Advanced 3-strategy system finds educator spreadsheets
+4. **Fallback Protection**: Creates "Teacher Input" sheets when main sheets are protected
+5. **Hebrew Interface**: Complete RTL interface for configuration
+
+### How It Works
+- Teacher saves a record → Instantly saved to their own spreadsheet
+- If class has mapped educator → Also saved to educator's BPApp spreadsheet
+- Intelligent sorting maintains chronological order in both spreadsheets
+- Automatic protection management ensures teachers can write to educator sheets
+
 ## 🤝 Contributing
 
-This project follows clean architecture principles and Hebrew localization best practices. See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
+This project follows clean architecture principles and Hebrew localization best practices. See [CLAUDE.md](CLAUDE.md) for detailed development guidelines including the new multi-destination saving architecture.
 
 ## 📄 License
 
@@ -164,4 +195,4 @@ This project follows clean architecture principles and Hebrew localization best 
 
 ---
 
-**Built with Flutter 💙 | Hebrew RTL Support 🇮🇱 | Google Sheets Integration 📊**
+**Built with Flutter 💙 | Hebrew RTL Support 🇮🇱 | Multi-Destination Google Sheets 📊 | Offline-First SQLite 💾**
