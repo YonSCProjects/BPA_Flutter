@@ -91,3 +91,7 @@ ios/Runner/GoogleService-Info.plist
 
 # API Keys and sensitive config
 lib/config/api_keys.dart
+
+# Personal files (user-specific notes)
+forme.txt
+For me.md
