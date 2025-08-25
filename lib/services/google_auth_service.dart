@@ -16,8 +16,6 @@ class GoogleAuthService extends ChangeNotifier {
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: _scopes,
-    // Web OAuth client ID from Firebase project (client_type: 3)
-    serverClientId: '579440030749-4hs2mhr7egcafqok2looja0vqditnodp.apps.googleusercontent.com',
   );
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
