@@ -123,7 +123,7 @@ class _EducatorSettingsPageState extends State<EducatorSettingsPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('הגדרות שיתוף למדריכים'),
+          title: const Text('הגדרות שיתוף למחנכות/ים'),
           centerTitle: true,
         ),
         body: _isLoading
@@ -164,7 +164,7 @@ class _EducatorSettingsPageState extends State<EducatorSettingsPage> {
                               child: TextField(
                                 controller: _emailController,
                                 decoration: const InputDecoration(
-                                  labelText: 'מייל המדריך',
+                                  labelText: 'מייל המחנך/ת',
                                   border: OutlineInputBorder(),
                                   isDense: true,
                                 ),
@@ -183,7 +183,7 @@ class _EducatorSettingsPageState extends State<EducatorSettingsPage> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'הערה: המדריך צריך לשתף איתך את הגיליון שלו עם הרשאות עריכה',
+                          'הערה: המחנך/ת צריך/ה לשתף איתך את הגיליון שלו/ה עם הרשאות עריכה',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey,

@@ -157,7 +157,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
                         children: [
                           Icon(Icons.share),
                           SizedBox(width: 8),
-                          Text('הגדרות שיתוף למדריכים'),
+                          Text('הגדרות שיתוף למחנכות/ים'),
                         ],
                       ),
                     ),
@@ -428,7 +428,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  'הנתונים ישותפו עם המדריך',
+                  'הנתונים ישותפו עם המחנך/ת',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.blue.shade700,
@@ -663,7 +663,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
           
           String message = 'הרשומה נשמרה בהצלחה';
           if (hasEducator) {
-            message += '\n✅ נשלח גם למדריך של כיתה $className';
+            message += '\n✅ נשלח גם למחנך/ת של כיתה $className';
           }
           
           ScaffoldMessenger.of(context).showSnackBar(
