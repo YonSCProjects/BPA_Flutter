@@ -25,38 +25,14 @@ class HebrewNumberPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textDirection: TextDirection.rtl,
-                ),
-                if (isRequired)
-                  const Text(
-                    ' *',
-                    style: TextStyle(color: Colors.red),
-                  ),
-              ],
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                value.toString(),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ),
-          ],
+        Text(
+          label,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          textDirection: TextDirection.rtl,
         ),
         if (description != null)
           Padding(

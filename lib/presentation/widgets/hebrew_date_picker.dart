@@ -23,15 +23,7 @@ class HebrewDatePicker extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
-        suffixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isRequired)
-              const Icon(Icons.star, color: Colors.red, size: 12),
-            const SizedBox(width: 8),
-            const Icon(Icons.calendar_today),
-          ],
-        ),
+        suffixIcon: const Icon(Icons.calendar_today),
       ),
       controller: TextEditingController(
         text: _formatDateForDisplay(value),
