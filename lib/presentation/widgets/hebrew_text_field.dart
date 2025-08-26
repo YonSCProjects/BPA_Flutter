@@ -193,9 +193,6 @@ class _HebrewTextFieldState extends State<HebrewTextField> {
           hintText: widget.hintText,
           border: const OutlineInputBorder(),
           alignLabelWithHint: true,
-          suffixIcon: widget.isRequired
-              ? const Icon(Icons.star, color: Colors.red, size: 12)
-              : null,
         ),
         validator: widget.isRequired
             ? (value) {

@@ -125,8 +125,8 @@ class _StudentFormPageState extends State<StudentFormPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('מעקב נתוני תלמיד'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('תכנית התנהגותית - ניקוד'),
+        // Using theme's default app bar color for better contrast
         actions: [
           Consumer<GoogleAuthService>(
             builder: (context, authService, child) {
@@ -577,7 +577,12 @@ class _StudentFormPageState extends State<StudentFormPage> {
 
   Widget _buildBottomSection(FormProvider formProvider) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: 16 + MediaQuery.of(context).padding.bottom, // Add system navigation bar padding
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
