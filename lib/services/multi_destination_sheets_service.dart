@@ -610,12 +610,24 @@ class MultiDestinationSheetsService {
       
       for (int i = 0; i < response.values!.length; i++) {
         final row = response.values![i];
-        if (row.length >= 4 &&
-            row[0]?.toString() == record.date &&
-            row[1]?.toString() == record.studentName &&
-            row[2]?.toString() == record.className &&
-            int.tryParse(row[3]?.toString() ?? '') == record.classNumber) {
-          return i + 2; // +2 because sheets are 1-indexed and we skip header
+        if (row.length >= 4) {
+          // Use trim() for consistent matching like the main GoogleSheetsService
+          final existingDate = row[0]?.toString().trim() ?? '';
+          final existingStudent = row[1]?.toString().trim() ?? '';
+          final existingClass = row[2]?.toString().trim() ?? '';
+          final existingClassNumber = int.tryParse(row[3]?.toString() ?? '0') ?? 0;
+          
+          // Normalize the record fields for comparison
+          final recordDate = record.date.trim();
+          final recordStudent = record.studentName.trim();
+          final recordClass = record.className.trim();
+          
+          if (existingDate == recordDate &&
+              existingStudent == recordStudent &&
+              existingClass == recordClass &&
+              existingClassNumber == record.classNumber) {
+            return i + 2; // +2 because sheets are 1-indexed and we skip header
+          }
         }
       }
       
