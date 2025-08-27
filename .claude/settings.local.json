@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter clean:*)",
+      "Bash(rd:*)",
+      "Bash(rm:*)",
+      "Bash(flutter run:*)",
+      "Bash(keytool:*)",
+      "Bash(./gradlew:*)",
+      "Bash(flutter logs:*)",
+      "Bash(flutter:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "Bash(powershell:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(adb:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\"
+    ]
+  }
+}
