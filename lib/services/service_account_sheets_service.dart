@@ -1,0 +1,457 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:googleapis/sheets/v4.dart' as sheets;
+import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:googleapis_auth/auth_io.dart';
+import 'package:http/http.dart' as http;
+
+import '../config/app_config.dart';
+import '../data/models/student_record.dart';
+
+/// Service Account based Google Sheets Service
+/// 
+/// This service uses service account credentials for centralized
+/// spreadsheet management instead of individual OAuth per user.
+/// 
+/// **IMPORTANT**: Only used when AppConfig.useServiceAccount = true
+/// Falls back to GoogleSheetsService when disabled.
+class ServiceAccountSheetsService extends ChangeNotifier {
+  static const String _serviceAccountAssetPath = 'assets/service_account.json';
+  static const List<String> _scopes = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive.metadata.readonly',
+  ];
+
+  // Service account components
+  AutoRefreshingAuthClient? _authClient;
+  sheets.SheetsApi? _sheetsApi;
+  drive.DriveApi? _driveApi;
+  ServiceAccountCredentials? _credentials;
+  
+  // State management
+  bool _isInitialized = false;
+  bool _isLoading = false;
+  String? _error;
+  
+  // Getters
+  bool get isInitialized => _isInitialized;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+  bool get isEnabled => AppConfig.useServiceAccount && !AppConfig.emergencyDisable;
+  
+  /// Initialize service account authentication
+  Future<bool> initialize() async {
+    if (!isEnabled) {
+      _logDebug('Service account disabled in config - skipping initialization');
+      return false;
+    }
+    
+    _setLoading(true);
+    _setError(null);
+    
+    try {
+      _logDebug('Starting service account initialization...');
+      
+      // Load service account credentials from assets
+      await _loadCredentials();
+      
+      // Create authenticated client
+      await _createAuthenticatedClient();
+      
+      // Initialize APIs
+      _initializeApis();
+      
+      _isInitialized = true;
+      _logDebug('Service account initialization successful');
+      return true;
+      
+    } catch (e) {
+      _setError('שגיאה באתחול שירות החשבון: ${e.toString()}');
+      _logDebug('Service account initialization failed: $e');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  /// Load service account credentials from assets
+  Future<void> _loadCredentials() async {
+    try {
+      _logDebug('Loading service account credentials from $_serviceAccountAssetPath');
+      
+      final String credentialsJson = await rootBundle.loadString(_serviceAccountAssetPath);
+      final Map<String, dynamic> credentialsMap = jsonDecode(credentialsJson);
+      
+      _credentials = ServiceAccountCredentials.fromJson(credentialsMap);
+      _logDebug('Service account credentials loaded successfully');
+      _logDebug('Project ID: ${_credentials!.projectId}');
+      _logDebug('Client Email: ${_credentials!.email}');
+      
+    } catch (e) {
+      throw Exception('Failed to load service account credentials: $e');
+    }
+  }
+  
+  /// Create authenticated HTTP client using service account
+  Future<void> _createAuthenticatedClient() async {
+    if (_credentials == null) {
+      throw Exception('Service account credentials not loaded');
+    }
+    
+    try {
+      _logDebug('Creating authenticated client with scopes: $_scopes');
+      
+      _authClient = await clientViaServiceAccount(_credentials!, _scopes);
+      _logDebug('Authenticated client created successfully');
+      
+    } catch (e) {
+      throw Exception('Failed to create authenticated client: $e');
+    }
+  }
+  
+  /// Initialize Google APIs with authenticated client
+  void _initializeApis() {
+    if (_authClient == null) {
+      throw Exception('Authenticated client not available');
+    }
+    
+    _sheetsApi = sheets.SheetsApi(_authClient!);
+    _driveApi = drive.DriveApi(_authClient!);
+    _logDebug('Google APIs initialized successfully');
+  }
+  
+  /// Create or access centralized spreadsheet for educator
+  /// 
+  /// Unlike OAuth approach, this creates/manages spreadsheets centrally
+  /// with service account as owner and educators as editors
+  Future<String?> createOrAccessEducatorSpreadsheet(String educatorEmail, String educatorName) async {
+    if (!_isInitialized) {
+      _setError('שירות החשבון לא מאותחל');
+      return null;
+    }
+    
+    try {
+      _logDebug('Creating/accessing spreadsheet for educator: $educatorName ($educatorEmail)');
+      
+      // Search for existing educator spreadsheet
+      final existingSpreadsheetId = await _findEducatorSpreadsheet(educatorEmail);
+      
+      if (existingSpreadsheetId != null) {
+        _logDebug('Found existing spreadsheet: $existingSpreadsheetId');
+        return existingSpreadsheetId;
+      }
+      
+      // Create new spreadsheet for educator
+      final spreadsheetId = await _createEducatorSpreadsheet(educatorEmail, educatorName);
+      _logDebug('Created new spreadsheet: $spreadsheetId');
+      
+      return spreadsheetId;
+      
+    } catch (e) {
+      _setError('שגיאה ביצירת גיליון למחנך: ${e.toString()}');
+      _logDebug('Error creating/accessing educator spreadsheet: $e');
+      return null;
+    }
+  }
+  
+  /// Find existing spreadsheet for educator
+  Future<String?> _findEducatorSpreadsheet(String educatorEmail) async {
+    if (_driveApi == null) return null;
+    
+    try {
+      // Search for spreadsheet with specific naming convention
+      // Format: "BPApp - [Educator Name]"
+      final response = await _driveApi!.files.list(
+        q: "name contains 'BPApp -' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and '$educatorEmail' in writers",
+        spaces: 'drive',
+        $fields: 'files(id,name,owners,writers)',
+      );
+      
+      if (response.files != null && response.files!.isNotEmpty) {
+        return response.files!.first.id;
+      }
+      
+      return null;
+    } catch (e) {
+      _logDebug('Error finding educator spreadsheet: $e');
+      return null;
+    }
+  }
+  
+  /// Create new spreadsheet for educator
+  Future<String?> _createEducatorSpreadsheet(String educatorEmail, String educatorName) async {
+    if (_sheetsApi == null) return null;
+    
+    try {
+      // Create spreadsheet with Hebrew RTL support
+      final spreadsheet = sheets.Spreadsheet(
+        properties: sheets.SpreadsheetProperties(
+          title: 'BPApp - $educatorName',
+          locale: 'en_US',
+          timeZone: 'Asia/Jerusalem',
+        ),
+        sheets: [
+          sheets.Sheet(
+            properties: sheets.SheetProperties(
+              title: 'נתוני תלמידים',
+              rightToLeft: true,
+              gridProperties: sheets.GridProperties(
+                frozenRowCount: 1,
+                columnCount: 12, // Same as original headers
+              ),
+            ),
+          ),
+        ],
+      );
+      
+      final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
+      final spreadsheetId = response.spreadsheetId!;
+      
+      // Add headers to new spreadsheet
+      await _addHeadersToSpreadsheet(spreadsheetId);
+      
+      // Share with educator (give edit access)
+      await _shareSpreadsheetWithEducator(spreadsheetId, educatorEmail);
+      
+      return spreadsheetId;
+      
+    } catch (e) {
+      _logDebug('Error creating educator spreadsheet: $e');
+      return null;
+    }
+  }
+  
+  /// Add Hebrew headers to spreadsheet
+  Future<void> _addHeadersToSpreadsheet(String spreadsheetId) async {
+    if (_sheetsApi == null) return;
+    
+    try {
+      const hebrewHeaders = [
+        'תאריך',
+        'שם התלמיד',
+        'שם הכיתה',
+        'מספר השיעור',
+        'כניסה',
+        'שהייה',
+        'אווירה',
+        'ביצוע',
+        'מטרה אישית',
+        'בונוס',
+        'סה"כ',
+        'הערות',
+      ];
+      
+      final range = 'נתוני תלמידים!A1:L1';
+      final valueRange = sheets.ValueRange(values: [hebrewHeaders]);
+      
+      await _sheetsApi!.spreadsheets.values.update(
+        valueRange,
+        spreadsheetId,
+        range,
+        valueInputOption: 'RAW',
+      );
+      
+      // Format headers (bold, centered, gray background)
+      await _formatHeaders(spreadsheetId);
+      
+    } catch (e) {
+      _logDebug('Error adding headers: $e');
+    }
+  }
+  
+  /// Format headers with styling
+  Future<void> _formatHeaders(String spreadsheetId) async {
+    if (_sheetsApi == null) return;
+    
+    try {
+      final requests = [
+        sheets.Request(
+          repeatCell: sheets.RepeatCellRequest(
+            range: sheets.GridRange(
+              sheetId: 0,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 12,
+            ),
+            cell: sheets.CellData(
+              userEnteredFormat: sheets.CellFormat(
+                backgroundColor: sheets.Color(red: 0.9, green: 0.9, blue: 0.9),
+                textFormat: sheets.TextFormat(bold: true, fontSize: 12),
+                horizontalAlignment: 'CENTER',
+              ),
+            ),
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+          ),
+        ),
+      ];
+      
+      final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(requests: requests);
+      await _sheetsApi!.spreadsheets.batchUpdate(batchUpdateRequest, spreadsheetId);
+      
+    } catch (e) {
+      _logDebug('Error formatting headers: $e');
+    }
+  }
+  
+  /// Share spreadsheet with educator
+  Future<void> _shareSpreadsheetWithEducator(String spreadsheetId, String educatorEmail) async {
+    if (_driveApi == null) return;
+    
+    try {
+      final permission = drive.Permission(
+        type: 'user',
+        role: 'writer', // Give edit access to educator
+        emailAddress: educatorEmail,
+      );
+      
+      await _driveApi!.permissions.create(
+        permission,
+        spreadsheetId,
+        sendNotificationEmail: true,
+        emailMessage: 'שותף איתך גיליון BPApp לניהול נתוני התלמידים שלך.',
+      );
+      
+      _logDebug('Shared spreadsheet $spreadsheetId with $educatorEmail');
+      
+    } catch (e) {
+      _logDebug('Error sharing spreadsheet: $e');
+    }
+  }
+  
+  /// Save student record to centralized educator spreadsheet
+  /// 
+  /// This replaces the individual OAuth approach with centralized management
+  Future<bool> saveRecordToEducatorSpreadsheet(
+    StudentRecord record,
+    String educatorEmail,
+    String educatorName,
+  ) async {
+    if (!_isInitialized) {
+      _setError('שירות החשבון לא מאותחל');
+      return false;
+    }
+    
+    try {
+      _logDebug('Saving record to educator spreadsheet: $educatorName');
+      
+      // Get or create educator spreadsheet
+      final spreadsheetId = await createOrAccessEducatorSpreadsheet(educatorEmail, educatorName);
+      if (spreadsheetId == null) {
+        _setError('לא ניתן לגשת לגיליון של המחנך');
+        return false;
+      }
+      
+      // Save record to spreadsheet
+      final success = await _saveRecordToSpreadsheet(spreadsheetId, record);
+      
+      if (success) {
+        _logDebug('Successfully saved record to educator spreadsheet');
+      } else {
+        _logDebug('Failed to save record to educator spreadsheet');
+      }
+      
+      return success;
+      
+    } catch (e) {
+      _setError('שגיאה בשמירה לגיליון המחנך: ${e.toString()}');
+      _logDebug('Error saving to educator spreadsheet: $e');
+      return false;
+    }
+  }
+  
+  /// Save record to specific spreadsheet
+  Future<bool> _saveRecordToSpreadsheet(String spreadsheetId, StudentRecord record) async {
+    if (_sheetsApi == null) return false;
+    
+    try {
+      // Use append operation for simplicity in Phase 1
+      // TODO: Add matching/updating logic in future iterations
+      final valueRange = sheets.ValueRange(
+        values: [record.withCalculatedScore().toSheetRow()],
+      );
+      
+      await _sheetsApi!.spreadsheets.values.append(
+        valueRange,
+        spreadsheetId,
+        'נתוני תלמידים!A:L',
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+      );
+      
+      return true;
+      
+    } catch (e) {
+      _logDebug('Error saving record to spreadsheet: $e');
+      return false;
+    }
+  }
+  
+  /// Get all educator spreadsheets managed by service account
+  /// Used for admin/monitoring purposes
+  Future<List<Map<String, String>>> getManagedSpreadsheets() async {
+    if (!_isInitialized || _driveApi == null) return [];
+    
+    try {
+      final response = await _driveApi!.files.list(
+        q: "name contains 'BPApp -' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+        spaces: 'drive',
+        $fields: 'files(id,name,createdTime,modifiedTime)',
+      );
+      
+      if (response.files == null) return [];
+      
+      return response.files!.map((file) => {
+        'id': file.id ?? '',
+        'name': file.name ?? '',
+        'createdTime': file.createdTime?.toIso8601String() ?? '',
+        'modifiedTime': file.modifiedTime?.toIso8601String() ?? '',
+      }).toList();
+      
+    } catch (e) {
+      _logDebug('Error getting managed spreadsheets: $e');
+      return [];
+    }
+  }
+  
+  /// Health check for service account
+  Future<bool> healthCheck() async {
+    if (!_isInitialized) return false;
+    
+    try {
+      // Test API access by listing drive files (minimal operation)
+      await _driveApi?.files.list(pageSize: 1);
+      return true;
+    } catch (e) {
+      _logDebug('Service account health check failed: $e');
+      return false;
+    }
+  }
+  
+  // ===== HELPER METHODS =====
+  
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+  
+  void _setError(String? error) {
+    _error = error;
+    notifyListeners();
+  }
+  
+  void _logDebug(String message) {
+    if (AppConfig.debugEnterpriseFeatures) {
+      debugPrint('[SERVICE_ACCOUNT] $message');
+    }
+  }
+  
+  @override
+  void dispose() {
+    _authClient?.close();
+    super.dispose();
+  }
+}

@@ -38,6 +38,11 @@ dependencies:
   googleapis: ^11.4.0              # Google Sheets API client
   googleapis_auth: ^1.4.1          # Google APIs authentication library
   http: ^1.1.0                     # HTTP client for API calls
+  
+  # Firebase for Enterprise Features (Phase 2)
+  firebase_core: ^2.24.2           # Firebase core functionality
+  cloud_firestore: ^4.14.0         # Firestore database for students/educators
+  firebase_auth: ^4.16.0           # Firebase authentication (future use)
 
   # State Management and Storage
   provider: ^6.0.5                 # State management
