@@ -8,7 +8,7 @@ class AppConfig {
   /// Service Account Integration (Phase 1)
   /// When true: Uses service account for centralized spreadsheet management
   /// When false: Uses existing OAuth flow
-  static const bool useServiceAccount = false;
+  static const bool useServiceAccount = true;
   
   /// Firebase Backend Integration (Phase 2)
   /// When true: Fetches students/educators from Firebase

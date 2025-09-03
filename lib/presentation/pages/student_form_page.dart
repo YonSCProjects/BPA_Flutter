@@ -10,6 +10,7 @@ import '../widgets/hebrew_date_picker.dart';
 import '../widgets/score_display.dart';
 import '../providers/form_provider.dart';
 import '../../core/educator_mappings.dart';
+import '../../config/app_config.dart';
 import 'educator_settings_page.dart';
 
 class StudentFormPage extends StatefulWidget {
@@ -45,25 +46,37 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Future<void> _initializeForm() async {
-    debugPrint('[FORM] _initializeForm called - isAuthenticated: ${_authService.isAuthenticated}');
+    debugPrint('[FORM] _initializeForm called - useServiceAccount: ${AppConfig.useServiceAccount}');
     
-    // Ensure authentication service is fully initialized
-    await _authService.initialize();
-    debugPrint('[FORM] After auth initialize - isAuthenticated: ${_authService.isAuthenticated}');
-    
-    if (!_authService.isAuthenticated) {
-      debugPrint('[FORM] Not authenticated, prompting sign-in');
-      await _promptSignIn();
-    }
-    
-    if (_authService.isAuthenticated && !_sheetsService.isInitialized) {
-      debugPrint('[FORM] Authenticated, initializing sheets service');
-      await _sheetsService.initialize();
-    }
-    
-    if (_authService.isAuthenticated) {
+    if (AppConfig.useServiceAccount) {
+      // Service account mode - skip authentication
+      debugPrint('[FORM] Service account mode - skipping authentication');
+      if (!_sheetsService.isInitialized) {
+        debugPrint('[FORM] Initializing sheets service with service account');
+        await _sheetsService.initialize();
+      }
       debugPrint('[FORM] Initializing form provider with defaults');
       await _formProvider.initializeWithDefaults(_sheetsService);
+    } else {
+      // OAuth mode - existing logic
+      debugPrint('[FORM] OAuth mode - checking authentication');
+      await _authService.initialize();
+      debugPrint('[FORM] After auth initialize - isAuthenticated: ${_authService.isAuthenticated}');
+      
+      if (!_authService.isAuthenticated) {
+        debugPrint('[FORM] Not authenticated, prompting sign-in');
+        await _promptSignIn();
+      }
+      
+      if (_authService.isAuthenticated && !_sheetsService.isInitialized) {
+        debugPrint('[FORM] Authenticated, initializing sheets service');
+        await _sheetsService.initialize();
+      }
+      
+      if (_authService.isAuthenticated) {
+        debugPrint('[FORM] Initializing form provider with defaults');
+        await _formProvider.initializeWithDefaults(_sheetsService);
+      }
     }
   }
 
