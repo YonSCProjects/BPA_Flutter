@@ -91,3 +91,6 @@ ios/Runner/GoogleService-Info.plist
 
 # API Keys and sensitive config
 lib/config/api_keys.dart
+
+# Service Account Credentials - NEVER COMMIT
+assets/service_account.json
