@@ -8,9 +8,12 @@ import 'google_sheets_service.dart';
 import 'google_auth_service.dart';
 
 /// Service that handles saving records to multiple Google Sheets
-/// Professional teachers save to:
-/// 1. Their own spreadsheet (always)
-/// 2. The educator's spreadsheet (if class has an associated educator)
+/// 
+/// User roles and save behavior:
+/// - Regular teachers: Save to their own sheet + educator's sheet (if different)
+/// - Educators (teachers who lead classes): Save only to their own sheet
+/// 
+/// This prevents duplicate saves when educators record their own students
 class MultiDestinationSheetsService {
   final GoogleSheetsService _primaryService;
   final GoogleAuthService _authService;
@@ -53,6 +56,13 @@ class MultiDestinationSheetsService {
       debugPrint('ℹ️ [MULTI-SAVE] No educator mapped for class: "${record.className}"');
       debugPrint('ℹ️ [MULTI-SAVE] Available mapped classes: ${EducatorMappings.getClassesWithEducators()}');
       return primarySuccess; // No educator, just return primary result
+    }
+    
+    // Check if current user IS the educator (prevent duplicate saves)
+    final currentUserEmail = _authService.currentUser?.email;
+    if (currentUserEmail != null && currentUserEmail.toLowerCase() == educatorEmail.toLowerCase()) {
+      debugPrint('🔄 [MULTI-SAVE] Current user IS the educator - skipping duplicate save');
+      return primarySuccess; // Don't save twice to same spreadsheet
     }
     
     debugPrint('👨‍🏫 [MULTI-SAVE] Found educator for class ${record.className}: $educatorEmail');

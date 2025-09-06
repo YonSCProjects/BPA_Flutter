@@ -102,6 +102,7 @@ class GoogleAuthService extends ChangeNotifier {
       notifyListeners(); // Notify UI of authentication state change
       
       debugPrint('[AUTH] Google Sign-In successful for: ${account.email}');
+      debugPrint('[AUTH] User ID: ${account.id}'); // This is the Google Auth UID
       debugPrint('[AUTH] Final isAuthenticated: $isAuthenticated');
       return true;
     } catch (e) {

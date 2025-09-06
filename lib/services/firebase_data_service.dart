@@ -95,7 +95,6 @@ class FirebaseDataService extends ChangeNotifier {
       final snapshot = await _firestore!
           .collection(_educatorsCollection)
           .where('active', isEqualTo: true)
-          .orderBy('name')
           .get();
       
       _cachedEducators = snapshot.docs
@@ -118,8 +117,6 @@ class FirebaseDataService extends ChangeNotifier {
       final snapshot = await _firestore!
           .collection(_studentsCollection)
           .where('active', isEqualTo: true)
-          .orderBy('educatorName')
-          .orderBy('name')
           .get();
       
       _cachedStudents = snapshot.docs
@@ -143,7 +140,6 @@ class FirebaseDataService extends ChangeNotifier {
     return _firestore!
         .collection(_educatorsCollection)
         .where('active', isEqualTo: true)
-        .orderBy('name')
         .snapshots()
         .map((snapshot) {
       final educators = snapshot.docs
@@ -184,8 +180,6 @@ class FirebaseDataService extends ChangeNotifier {
     return _firestore!
         .collection(_studentsCollection)
         .where('active', isEqualTo: true)
-        .orderBy('educatorName')
-        .orderBy('name')
         .snapshots()
         .map((snapshot) {
       final students = snapshot.docs

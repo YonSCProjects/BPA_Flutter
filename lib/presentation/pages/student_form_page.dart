@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 
 import '../../services/google_auth_service.dart';
 import '../../services/google_sheets_service.dart';
+import '../../services/firebase_data_service.dart';
 import '../widgets/hebrew_text_field.dart';
+import '../widgets/firebase_dropdown.dart';
 import '../widgets/hebrew_number_picker.dart';
 import '../widgets/hebrew_date_picker.dart';
 import '../widgets/score_display.dart';
@@ -25,6 +27,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
   late GoogleAuthService _authService;
   late GoogleSheetsService _sheetsService;
   late FormProvider _formProvider;
+  late FirebaseDataService _firebaseDataService;
   Timer? _debounceTimer;
 
   @override
@@ -33,6 +36,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
     _authService = context.read<GoogleAuthService>();
     _sheetsService = context.read<GoogleSheetsService>();
     _formProvider = context.read<FormProvider>();
+    _firebaseDataService = context.read<FirebaseDataService>();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeForm();
@@ -47,6 +51,17 @@ class _StudentFormPageState extends State<StudentFormPage> {
 
   Future<void> _initializeForm() async {
     debugPrint('[FORM] _initializeForm called - useServiceAccount: ${AppConfig.useServiceAccount}');
+    
+    // Initialize Firebase data service if enabled (works in both modes)
+    if (AppConfig.useFirebaseBackend && !_firebaseDataService.isInitialized) {
+      debugPrint('[FIREBASE_DATA] Initializing Firebase data service...');
+      final firebaseSuccess = await _firebaseDataService.initialize();
+      if (firebaseSuccess) {
+        debugPrint('[FIREBASE_DATA] Firebase data service initialization successful');
+      } else {
+        debugPrint('[FIREBASE_DATA] Firebase data service initialization failed: ${_firebaseDataService.error}');
+      }
+    }
     
     if (AppConfig.useServiceAccount) {
       // Service account mode - skip authentication
@@ -392,6 +407,21 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Widget _buildStudentNameField(FormProvider formProvider) {
+    // Use Firebase dropdown if enabled and initialized
+    if (AppConfig.useFirebaseDropdowns && _firebaseDataService.isInitialized) {
+      return FirebaseDropdown(
+        label: 'שם התלמיד',
+        fieldType: FirebaseFieldType.student,
+        value: formProvider.currentRecord.studentName,
+        onChanged: (value) {
+          formProvider.updateField('studentName', value ?? '');
+          _checkForExistingRecord(formProvider);
+        },
+        isRequired: true,
+      );
+    }
+    
+    // Fall back to regular text field
     return HebrewTextField(
       label: 'שם התלמיד',
       value: formProvider.currentRecord.studentName,
@@ -411,23 +441,42 @@ class _StudentFormPageState extends State<StudentFormPage> {
   Widget _buildClassNameField(FormProvider formProvider) {
     final hasEducator = EducatorMappings.hasEducator(formProvider.currentRecord.className);
     
+    Widget classField;
+    
+    // Use Firebase dropdown if enabled and initialized
+    if (AppConfig.useFirebaseDropdowns && _firebaseDataService.isInitialized) {
+      classField = FirebaseDropdown(
+        label: 'שם הכיתה',
+        fieldType: FirebaseFieldType.educator,
+        value: formProvider.currentRecord.className,
+        onChanged: (value) {
+          formProvider.updateField('className', value ?? '');
+          _checkForExistingRecord(formProvider);
+        },
+        isRequired: true,
+      );
+    } else {
+      // Fall back to regular text field
+      classField = HebrewTextField(
+        label: 'שם הכיתה',
+        value: formProvider.currentRecord.className,
+        onChanged: (value) {
+          formProvider.updateField('className', value);
+          _checkForExistingRecord(formProvider);
+        },
+        suggestions: _sheetsService.getClassSuggestions,
+        isRequired: true,
+        onSuggestionSelected: (suggestion) {
+          formProvider.updateField('className', suggestion);
+          _checkForExistingRecord(formProvider);
+        },
+      );
+    }
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HebrewTextField(
-          label: 'שם הכיתה',
-          value: formProvider.currentRecord.className,
-          onChanged: (value) {
-            formProvider.updateField('className', value);
-            _checkForExistingRecord(formProvider);
-          },
-          suggestions: _sheetsService.getClassSuggestions,
-          isRequired: true,
-          onSuggestionSelected: (suggestion) {
-            formProvider.updateField('className', suggestion);
-            _checkForExistingRecord(formProvider);
-          },
-        ),
+        classField,
         if (hasEducator)
           Padding(
             padding: const EdgeInsets.only(top: 4, right: 12),

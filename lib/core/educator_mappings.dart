@@ -2,7 +2,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 /// Configuration for mapping class names to educator emails
-/// Each class name is associated with an educator who receives copies of records
+/// 
+/// In the school system:
+/// - Classes are named after their educator (e.g., "מחנך א")
+/// - Educators are also teachers who use the app
+/// - When other teachers record data for students in an educator's class,
+///   the data is also saved to that educator's spreadsheet
+/// - When educators record their own students, data saves only once
 class EducatorMappings {
   static Map<String, String> _classToEducator = {};
   static bool _isInitialized = false;

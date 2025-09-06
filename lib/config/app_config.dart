@@ -13,12 +13,12 @@ class AppConfig {
   /// Firebase Backend Integration (Phase 2)
   /// When true: Fetches students/educators from Firebase
   /// When false: Uses existing text input fields
-  static const bool useFirebaseBackend = false;
+  static const bool useFirebaseBackend = true;
   
   /// Dynamic Dropdowns (Phase 3) 
   /// When true: Shows Firebase-powered dropdowns for students/classes
   /// When false: Uses existing Hebrew text fields
-  static const bool useFirebaseDropdowns = false;
+  static const bool useFirebaseDropdowns = true;
   
   // ===== EXISTING FEATURES (Keep Working) =====
   

@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'core/theme/hebrew_theme.dart';
 import 'core/constants/hebrew_strings.dart';
 import 'core/educator_mappings.dart';
 import 'services/google_auth_service.dart';
 import 'services/google_sheets_service.dart';
+import 'services/firebase_data_service.dart';
 import 'presentation/providers/form_provider.dart';
 import 'presentation/pages/student_form_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
+  await Firebase.initializeApp();
   
   // Initialize educator mappings from shared preferences
   await EducatorMappings.initialize();
@@ -35,6 +40,9 @@ class BPApp extends StatelessWidget {
           ),
           update: (context, authService, sheetsService) =>
               sheetsService ?? GoogleSheetsService(authService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => FirebaseDataService(),
         ),
         ChangeNotifierProvider(
           create: (_) => FormProvider(),
