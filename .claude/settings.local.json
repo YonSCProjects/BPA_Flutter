@@ -15,7 +15,14 @@
       "Bash(powershell:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(adb:*)"
+      "Bash(adb:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm install:*)",
+      "Bash(firebase login:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(where flutter)",
+      "Bash(\"C:\\flutter\\flutter\\bin\\cache\\dart-sdk\\../../artifacts/dart-sdk/../tools/flutter_tools.snapshot\" install --device-id R5CW7197WXT \"C:\\BPA_Sup\\BPA_Fllutter\\build\\app\\outputs\\flutter-apk\\app-release.apk\")"
     ],
     "deny": [],
     "ask": [],

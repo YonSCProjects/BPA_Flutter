@@ -1,0 +1,10 @@
+{
+  "app_settings": {
+    "version": "1.0.0",
+    "maintenanceMode": false,
+    "features": {
+      "useServiceAccount": true,
+      "useFirebaseData": false
+    }
+  }
+}

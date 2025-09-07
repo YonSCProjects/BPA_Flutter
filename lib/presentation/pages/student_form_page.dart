@@ -173,7 +173,8 @@ class _StudentFormPageState extends State<StudentFormPage> {
                       );
                       // Reload mappings if settings were changed
                       if (result == true) {
-                        await EducatorMappings.initialize();
+                        final firebaseService = context.read<FirebaseDataService>();
+                        await EducatorMappings.initialize(firebaseService: firebaseService);
                         setState(() {}); // Refresh UI to show updated indicators
                       }
                     }

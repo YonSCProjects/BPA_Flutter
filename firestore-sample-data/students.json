@@ -1,0 +1,110 @@
+[
+  {
+    "name": "תלמיד א1",
+    "educatorId": "EDUCATOR_1_ID",
+    "educatorName": "מחנך א",
+    "grade": "כיתה א",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד א2",
+    "educatorId": "EDUCATOR_1_ID",
+    "educatorName": "מחנך א",
+    "grade": "כיתה א",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד א3",
+    "educatorId": "EDUCATOR_1_ID",
+    "educatorName": "מחנך א",
+    "grade": "כיתה א",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד א4",
+    "educatorId": "EDUCATOR_1_ID",
+    "educatorName": "מחנך א",
+    "grade": "כיתה א",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ב1",
+    "educatorId": "EDUCATOR_2_ID",
+    "educatorName": "מחנך ב",
+    "grade": "כיתה ב",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ב2",
+    "educatorId": "EDUCATOR_2_ID",
+    "educatorName": "מחנך ב",
+    "grade": "כיתה ב",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ב3",
+    "educatorId": "EDUCATOR_2_ID",
+    "educatorName": "מחנך ב",
+    "grade": "כיתה ב",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ב4",
+    "educatorId": "EDUCATOR_2_ID",
+    "educatorName": "מחנך ב",
+    "grade": "כיתה ב",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ג1",
+    "educatorId": "EDUCATOR_3_ID",
+    "educatorName": "מחנך ג",
+    "grade": "כיתה ג",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ג2",
+    "educatorId": "EDUCATOR_3_ID",
+    "educatorName": "מחנך ג",
+    "grade": "כיתה ג",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ג3",
+    "educatorId": "EDUCATOR_3_ID",
+    "educatorName": "מחנך ג",
+    "grade": "כיתה ג",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "תלמיד ג4",
+    "educatorId": "EDUCATOR_3_ID",
+    "educatorName": "מחנך ג",
+    "grade": "כיתה ג",
+    "notes": "",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  }
+]

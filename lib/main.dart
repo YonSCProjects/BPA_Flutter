@@ -18,8 +18,12 @@ void main() async {
   // Initialize Firebase
   await Firebase.initializeApp();
   
-  // Initialize educator mappings from shared preferences
-  await EducatorMappings.initialize();
+  // Initialize Firebase data service
+  final firebaseService = FirebaseDataService();
+  await firebaseService.initialize();
+  
+  // Initialize educator mappings with Firebase data
+  await EducatorMappings.initialize(firebaseService: firebaseService);
   
   runApp(const BPApp());
 }

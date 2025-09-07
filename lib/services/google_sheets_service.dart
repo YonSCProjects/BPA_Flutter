@@ -726,6 +726,36 @@ class GoogleSheetsService extends ChangeNotifier {
   Future<bool> _originalSaveRecord(StudentRecord record) async {
     debugPrint('💾 [SAVE] Using original save logic');
     
+    // Ensure spreadsheet exists before attempting save
+    if (_spreadsheetId == null) {
+      debugPrint('⚠️ [SAVE] No spreadsheet ID found, attempting to discover/create spreadsheet');
+      // Step 1: Look for user's own BPApp spreadsheet
+      await _findExistingSpreadsheet();
+      
+      if (_spreadsheetId == null) {
+        debugPrint('🔍 [SAVE] No owned spreadsheet found - checking trash...');
+        
+        // Step 2: Check if spreadsheet exists in trash before creating new one
+        final recoveredFromTrash = await _checkAndRecoverFromTrash();
+        if (!recoveredFromTrash) {
+          debugPrint('🔍 [SAVE] No recoverable spreadsheet found - creating new one...');
+          await _createSpreadsheet();
+        }
+      }
+      
+      if (_spreadsheetId == null) {
+        debugPrint('❌ [SAVE] Failed to discover or create spreadsheet');
+        return false;
+      }
+      
+      // Get sheet ID for API operations
+      if (_sheetId == null) {
+        await _getSheetId();
+      }
+      
+      debugPrint('✅ [SAVE] Spreadsheet setup complete: $_spreadsheetId');
+    }
+    
     try {
       debugPrint('💾 [SAVE] Record with score: ${record.toString()}');
       

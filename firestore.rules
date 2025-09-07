@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isEducator() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'educator';
+    }
+    
+    function isTeacher() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection - user profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Educators collection - class/educator information
+    match /educators/{educatorId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isEducator() && resource.data.email == request.auth.token.email);
+      allow delete: if isAdmin();
+    }
+    
+    // Students collection - student records
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() || isEducator();
+      allow update: if isAdmin() || isEducator();
+      allow delete: if isAdmin();
+    }
+    
+    // Config collection - app configuration
+    match /config/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Admin data - for admin panel only
+    match /admin/{document} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    
+    // Audit logs (optional - for tracking changes)
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if false; // Logs should be immutable
+      allow delete: if false; // Logs should not be deleted
+    }
+  }
+}

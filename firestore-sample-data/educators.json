@@ -1,0 +1,26 @@
+[
+  {
+    "name": "מחנך א",
+    "email": "educator1@school.edu",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "מחנך ב",
+    "email": "educator2@school.edu",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "מחנך ג",
+    "email": "educator3@school.edu",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  },
+  {
+    "name": "מחנך ד",
+    "email": "educator4@school.edu",
+    "active": true,
+    "createdAt": {"_seconds": 1704067200, "_nanoseconds": 0}
+  }
+]

@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../services/firebase_data_service.dart';
 
 /// Configuration for mapping class names to educator emails
 /// 
@@ -13,18 +14,50 @@ class EducatorMappings {
   static Map<String, String> _classToEducator = {};
   static bool _isInitialized = false;
   
-  /// Initialize mappings from shared preferences
-  static Future<void> initialize() async {
+  /// Initialize mappings from Firebase and shared preferences
+  static Future<void> initialize({FirebaseDataService? firebaseService}) async {
     if (_isInitialized) return;
     
     final prefs = await SharedPreferences.getInstance();
     final mappingsJson = prefs.getString('educator_mappings');
     
+    // Load mappings from shared preferences first
     if (mappingsJson != null) {
       _classToEducator = Map<String, String>.from(json.decode(mappingsJson));
     }
     
+    // Try to load from Firebase if service is provided and initialized
+    if (firebaseService != null && firebaseService.isInitialized) {
+      try {
+        await _loadFromFirebase(firebaseService);
+        // Save updated mappings to preferences
+        await prefs.setString('educator_mappings', json.encode(_classToEducator));
+        print('[EDUCATOR_MAPPINGS] Loaded ${_classToEducator.length} mappings from Firebase');
+      } catch (e) {
+        print('[EDUCATOR_MAPPINGS] Error loading from Firebase: $e');
+        // Continue with cached/empty mappings
+      }
+    } else {
+      print('[EDUCATOR_MAPPINGS] Firebase service not available, using cached mappings');
+    }
+    
     _isInitialized = true;
+  }
+  
+  /// Load educator mappings from Firebase data
+  static Future<void> _loadFromFirebase(FirebaseDataService firebaseService) async {
+    final educators = firebaseService.getCachedEducators();
+    
+    // Clear existing mappings and rebuild from Firebase
+    _classToEducator.clear();
+    
+    // Map educator names to their emails
+    for (final educator in educators) {
+      if (educator.name.isNotEmpty && educator.email.isNotEmpty && educator.active) {
+        _classToEducator[educator.name] = educator.email;
+        print('[EDUCATOR_MAPPINGS] Mapped "${educator.name}" -> "${educator.email}"');
+      }
+    }
   }
   
   /// Get educator email for a given class name

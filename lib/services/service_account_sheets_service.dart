@@ -297,28 +297,74 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     }
   }
   
-  /// Share spreadsheet with educator
+  /// Transfer spreadsheet ownership to educator (appears in their My Drive)
   Future<void> _shareSpreadsheetWithEducator(String spreadsheetId, String educatorEmail) async {
     if (_driveApi == null) return;
     
     try {
-      final permission = drive.Permission(
+      _logDebug('Transferring ownership of $spreadsheetId to $educatorEmail');
+      
+      // STEP 1: Transfer ownership to educator (moves to their My Drive)
+      final ownerPermission = drive.Permission(
         type: 'user',
-        role: 'writer', // Give edit access to educator
+        role: 'owner',
         emailAddress: educatorEmail,
       );
       
       await _driveApi!.permissions.create(
-        permission,
+        ownerPermission,
         spreadsheetId,
+        transferOwnership: true,
         sendNotificationEmail: true,
-        emailMessage: 'שותף איתך גיליון BPApp לניהול נתוני התלמידים שלך.',
+        emailMessage: 'גיליון BPApp נוצר עבורך וזמין ב"הכונן שלי". הוא יופיע בתיקיית "הכונן שלי" שלך.',
       );
       
-      _logDebug('Shared spreadsheet $spreadsheetId with $educatorEmail');
+      _logDebug('✅ Transferred ownership to educator - file now in their My Drive');
+      
+      // STEP 2: Ensure service account retains writer access
+      try {
+        if (_credentials?.email != null) {
+          final servicePermission = drive.Permission(
+            type: 'user',
+            role: 'writer',
+            emailAddress: _credentials!.email,
+          );
+          
+          await _driveApi!.permissions.create(
+            servicePermission,
+            spreadsheetId,
+            sendNotificationEmail: false,
+          );
+          
+          _logDebug('✅ Service account retained writer access');
+        }
+      } catch (serviceError) {
+        _logDebug('⚠️ Could not retain service account access: $serviceError');
+      }
       
     } catch (e) {
-      _logDebug('Error sharing spreadsheet: $e');
+      _logDebug('❌ Error transferring ownership: $e');
+      _logDebug('⚠️ Falling back to sharing (file will be in Shared with me)');
+      
+      // Fallback: Just share if ownership transfer fails
+      try {
+        final writerPermission = drive.Permission(
+          type: 'user',
+          role: 'writer',
+          emailAddress: educatorEmail,
+        );
+        
+        await _driveApi!.permissions.create(
+          writerPermission,
+          spreadsheetId,
+          sendNotificationEmail: true,
+          emailMessage: 'גיליון BPApp שותף איתך. הוא יופיע ב"שותף איתי".',
+        );
+        
+        _logDebug('📁 Shared spreadsheet as fallback');
+      } catch (shareError) {
+        _logDebug('❌ Could not share spreadsheet: $shareError');
+      }
     }
   }
   
