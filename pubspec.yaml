@@ -38,6 +38,7 @@ dependencies:
   googleapis: ^11.4.0              # Google Sheets API client
   googleapis_auth: ^1.4.1          # Google APIs authentication library
   http: ^1.1.0                     # HTTP client for API calls
+  dart_jsonwebtoken: ^2.12.0       # JWT for service account impersonation
   
   # Firebase for Enterprise Features (Phase 2)
   firebase_core: ^2.24.2           # Firebase core functionality
@@ -74,9 +75,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/service_account.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

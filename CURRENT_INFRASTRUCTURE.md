@@ -1,9 +1,40 @@
 # Current BPApp Infrastructure Documentation
 
-## Overview
-This document captures all existing Google Cloud, Firebase, and OAuth configurations that are currently working in the BPApp. Enterprise features (service account and Firebase backend) have been successfully implemented and are now active.
+Last Updated: January 2025
 
-## 1. Firebase Project Configuration ✅
+## Project Status
+✅ **EDUCATOR SELF-INITIALIZATION IMPLEMENTED** - Educators create their own spreadsheets with auto-sharing
+⚠️ **KNOWN ISSUE**: Educator entries not being saved to educator spreadsheets (needs debugging)
+
+## Overview
+This document captures all existing Google Cloud, Firebase, and OAuth configurations in BPApp. The app now implements educator self-initialization where educators create their own BPApp spreadsheets that are automatically shared with the service account.
+
+## 1. Recent Changes (January 2025)
+
+### Service Account Implementation
+- **Service Account Email**: `bpapp-service-account@bpapp-firebase-485c1.iam.gserviceaccount.com`
+- **Client ID**: `100081966883778585358`
+- **Credentials**: Stored in `assets/service_account.json`
+- **Google Workspace**: Subscription cancelled (not needed with new approach)
+
+### New Educator Self-Initialization Flow
+1. **Educator Detection**: App checks if user email is in educator mappings (from Firebase)
+2. **Auto-Creation**: When educator signs in, app creates "BPApp" in their Google Drive
+3. **Auto-Sharing**: Spreadsheet automatically shared with service account as editor
+4. **Issue**: Multi-destination saving to educator sheets not working yet
+
+### OAuth Scope Updates
+Added full Drive scope for sharing permissions:
+```dart
+static const List<String> _scopes = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive', // Full drive access for sharing
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.metadata.readonly',
+];
+```
+
+## 2. Firebase Project Configuration ✅
 
 ### Project Details
 - **Project ID**: `bpapp-firebase-485c1`
@@ -28,7 +59,7 @@ This document captures all existing Google Cloud, Firebase, and OAuth configurat
    - Client Type: 3 (Web)
    - Used for: Google Sign-In flow
 
-## 2. Google Cloud Console Configuration ✅
+## 3. Google Cloud Console Configuration ✅
 
 ### OAuth Consent Screen (Configured)
 - **User Type**: External
@@ -37,14 +68,15 @@ This document captures all existing Google Cloud, Firebase, and OAuth configurat
 - **Test Users**: Configured (including yon.level@gmail.com)
 - **Publishing Status**: Testing (allows up to 100 test users)
 
-### OAuth 2.0 Scopes (Already Added)
-The following scopes are configured and working:
+### OAuth 2.0 Scopes (Updated)
+The following scopes are configured:
 1. `https://www.googleapis.com/auth/userinfo.email`
 2. `https://www.googleapis.com/auth/userinfo.profile`
 3. `https://www.googleapis.com/auth/spreadsheets`
-4. `https://www.googleapis.com/auth/drive.file`
-5. `https://www.googleapis.com/auth/drive.metadata.readonly`
-6. `openid`
+4. `https://www.googleapis.com/auth/drive` (NEW - for sharing)
+5. `https://www.googleapis.com/auth/drive.file`
+6. `https://www.googleapis.com/auth/drive.metadata.readonly`
+7. `openid`
 
 ### APIs Enabled
 - Google Sheets API ✅
@@ -52,43 +84,70 @@ The following scopes are configured and working:
 - Google Sign-In API ✅
 - Identity Toolkit API ✅ (for Firebase Auth)
 
-## 3. Current Authentication Flow (Working)
+## 4. Current Authentication Flow (Working)
 
-### Google Sign-In Implementation
-```dart
-// In lib/services/google_auth_service.dart
-final GoogleSignIn _googleSignIn = GoogleSignIn(
-  scopes: [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
-  ],
-);
-```
+### Dual Authentication System
+1. **OAuth Mode** (Default for teachers/educators)
+   - Individual Google Sign-In
+   - Each user owns their spreadsheet
+   - Educators auto-create and share their BPApp
+
+2. **Service Account Mode** (Available but not primary)
+   - Uses service account credentials
+   - Can write to shared spreadsheets
+   - Limited by permission constraints
 
 ### Authentication Status
 - ✅ Google Sign-In working
 - ✅ OAuth scopes properly configured
 - ✅ User can authenticate and access Google Sheets
 - ✅ Automatic spreadsheet creation/discovery working
-- ✅ Current user: yon.level@gmail.com (test user)
+- ✅ Educator self-initialization implemented
+- ⚠️ Multi-destination saving to educator sheets not working
 
-## 4. Google Sheets Integration (Working)
+## 5. Google Sheets Integration
 
-### Current Spreadsheet Management
+### Teacher Spreadsheet Management
 - **Spreadsheet Name**: "BPApp"
-- **Owner**: Individual user (OAuth authenticated)
+- **Owner**: Individual teacher
 - **Protection**: Read-only protection with app-only edit access
 - **Sheet ID**: Dynamically discovered/created per user
-- **Example Sheet ID**: `12s86UFaBK2-OQmefZLJx3wy_rPHr-_G9Q2fOSGxt3qc`
 
-### Current Permissions Model
-- Each teacher authenticates individually via OAuth
-- Each teacher owns their own "BPApp" spreadsheet
-- Multi-destination saving to educator sheets (if configured)
-- Manual permission sharing required between teachers and educators
+### Educator Spreadsheet Management (NEW)
+- **Creation**: Auto-created when educator signs in
+- **Location**: Educator's "My Drive"
+- **Sharing**: Auto-shared with service account as editor
+- **Issue**: Entries not being saved from teacher forms
 
-## 5. Android Build Configuration
+### Service Account Access
+- Service account has editor access to educator spreadsheets
+- Should enable multi-destination saving
+- Currently not working - needs debugging
+
+## 6. Key Services Implementation
+
+### New Services Added
+1. **`educator_self_init_service.dart`**
+   - Checks if user is educator
+   - Creates BPApp in educator's Drive
+   - Shares with service account
+
+2. **`service_account_sheets_service.dart`**
+   - Manages service account authentication
+   - Attempts to write to educator sheets
+   - JWT implementation for impersonation (deprecated)
+
+3. **`service_account_jwt_auth.dart`**
+   - Custom JWT authentication
+   - Impersonation support (not used in current approach)
+
+### Modified Services
+- **`multi_destination_sheets_service.dart`**
+  - Updated to find (not create) educator spreadsheets
+  - Should use service account for educator writes
+  - Currently failing - needs investigation
+
+## 7. Android Build Configuration
 
 ### SHA Certificates
 - **Debug SHA-1**: `6D:23:55:3B:9B:CC:43:12:E2:BA:18:80:DF:11:2D:14:E8:46:19:DE`
@@ -96,58 +155,34 @@ final GoogleSignIn _googleSignIn = GoogleSignIn(
 - **Keystore Location**: `~/.android/debug.keystore`
 - **Status**: Configured in Firebase Console
 
-### Gradle Configuration
-```kotlin
-// In android/app/build.gradle.kts
-android {
-    namespace = "com.bpa.student"
-    applicationId = "com.bpa.student"
-}
+## 8. Current Issues to Debug
 
-// Google Services plugin enabled
-id("com.google.gms.google-services")
-```
+### Multi-Destination Saving Not Working
+**Symptoms**:
+- Teacher entries save to teacher spreadsheet ✅
+- Educator spreadsheet created and shared ✅
+- Entries NOT appearing in educator spreadsheet ❌
 
-## 6. What Needs to Be Added for Enterprise Features
+**Possible Causes**:
+1. Service account not being used for educator writes
+2. Permission issues despite sharing
+3. Spreadsheet ID not being found/cached correctly
+4. Multi-destination logic not triggering
 
-### For Service Account:
-1. **Create Service Account** in existing Google Cloud project
-2. **Enable Domain-Wide Delegation** (if using Google Workspace)
-3. **Generate and Download JSON Key**
-4. **Grant Necessary Permissions**:
-   - Sheets API access
-   - Drive API access
-   - Ability to impersonate users (if needed)
+**Debug Steps for Tomorrow**:
+1. Check if `_findOrCreateEducatorSpreadsheet` finds the educator's spreadsheet
+2. Verify service account is initialized when needed
+3. Check logs for permission errors when writing to educator sheets
+4. Ensure educator email mapping is correct
 
-### For Firebase Backend: ✅ COMPLETED
-Firebase project is now fully configured with:
-1. ✅ **Firestore Database Enabled** with educators and students collections
-2. ✅ **Security Rules Configured** for public read access during testing
-3. ✅ **Firebase Authentication Active** with Google Sign-In integration
-4. ✅ **Firebase SDK Dependencies Added** (firebase_core, cloud_firestore, firebase_auth)
-5. ✅ **Collections Created** for educators and students with sample data
-
-## 7. Important URLs and Resources
-
-### Console Access
-- **Firebase Console**: https://console.firebase.google.com/project/bpapp-firebase-485c1
-- **Google Cloud Console**: https://console.cloud.google.com/home/dashboard?project=bpapp-firebase-485c1
-- **OAuth Consent Screen**: https://console.cloud.google.com/apis/credentials/consent?project=bpapp-firebase-485c1
-- **API Library**: https://console.cloud.google.com/apis/library?project=bpapp-firebase-485c1
-
-### Current Production Data
-- **Active Spreadsheet**: Each user has their own "BPApp" spreadsheet
-- **User Email**: yon.level@gmail.com (test account)
-- **Autocomplete Data**: 4 students, 4 classes currently in test spreadsheet
-
-## 8. Environment Details
+## 9. Environment Details
 
 ### Development Environment
 - **OS**: Windows
 - **Flutter Version**: 3.32.6 (stable)
 - **Dart Version**: Compatible with SDK ^3.8.1
 - **Android Studio**: Configured
-- **Device Testing**: Samsung SM-S918B (Android)
+- **Device Testing**: Samsung devices + emulators
 
 ### Current Dependencies
 ```yaml
@@ -156,10 +191,13 @@ google_sign_in: ^6.1.5
 googleapis: ^11.4.0
 googleapis_auth: ^1.4.1
 
-# Firebase Integration (NEW)
+# Firebase Integration
 firebase_core: ^2.24.2
 cloud_firestore: ^4.14.0
 firebase_auth: ^4.16.0
+
+# JWT for service account
+dart_jsonwebtoken: ^2.12.0
 
 # Local Storage
 sqflite: ^2.3.0
@@ -170,84 +208,60 @@ flutter_secure_storage: ^9.0.0
 provider: ^6.0.5
 ```
 
-## 9. Security Considerations
+## 10. Testing Accounts and Data
 
-### Current Security Model
-- OAuth 2.0 authentication per user
-- Secure token storage using flutter_secure_storage
-- Spreadsheet protection (read-only except via app)
-- Hebrew RTL support throughout
-
-### What's Missing for Enterprise
-- Service account credentials management
-- Firebase security rules
-- Role-based access control (admin/teacher/educator)
-- Centralized permission management
-
-## 10. Migration Considerations
-
-### From Current to Enterprise
-1. **Maintain Backward Compatibility**: Keep OAuth flow as fallback
-2. **Preserve Existing Data**: Don't break current spreadsheet access
-3. **Feature Flags**: Toggle between OAuth and Service Account
-4. **Gradual Rollout**: Test with subset of users first
-
-### Data That Must Be Preserved
-- Existing "BPApp" spreadsheets per user
-- Current authentication tokens
-- Local SQLite databases
-- User preferences and settings
-
-## 11. Testing Accounts and Data
-
-### Current Test User
-- **Email**: yon.level@gmail.com
-- **Role**: Teacher (in OAuth consent screen test users)
-- **Access**: Full access to create/edit BPApp spreadsheet
+### Current Test Users
+- **Teacher**: yon.level@gmail.com
+- **Educator**: yonatanlevel@gmail.com (mapped to class "תאיר")
+- **Service Account**: bpapp-service-account@bpapp-firebase-485c1.iam.gserviceaccount.com
 
 ### Test Data Available
-- 4 test students in spreadsheet
+- 4 test students in Firebase
 - 4 test classes configured
-- Multi-destination educator mappings (if configured)
+- Educator mapping: "תאיר" -> "yonatanlevel@gmail.com"
 
-## 12. Known Working Configurations
+## 11. File Structure Updates
 
-### What's Currently Working
-✅ Google Sign-In with proper scopes
-✅ Automatic spreadsheet creation/discovery
-✅ Read/write to Google Sheets
-✅ Offline SQLite storage with sync
-✅ Hebrew RTL interface
-✅ Autocomplete from spreadsheet data
-✅ Real-time score calculation
-✅ 4-field record matching
-✅ Protection management
+### New Files Created
+- `lib/services/educator_self_init_service.dart` - Educator initialization
+- `lib/services/service_account_sheets_service.dart` - Service account management
+- `lib/services/service_account_jwt_auth.dart` - JWT authentication
+- `assets/service_account.json` - Service account credentials
 
-### Recent Fixes Applied
-- Fixed package name consistency (com.bpa.student)
-- Removed problematic serverClientId
-- Added proper OAuth scopes to consent screen
-- Configured SHA-1 certificates
-- Fixed ApiException: 10 (DEVELOPER_ERROR)
+### Modified Files
+- `lib/services/google_auth_service.dart` - Added full Drive scope
+- `lib/services/multi_destination_sheets_service.dart` - Disabled educator creation
+- `lib/presentation/pages/student_form_page.dart` - Added educator init flow
+
+## 12. Important URLs
+
+### Console Access
+- **Firebase Console**: https://console.firebase.google.com/project/bpapp-firebase-485c1
+- **Google Cloud Console**: https://console.cloud.google.com/home/dashboard?project=bpapp-firebase-485c1
+- **OAuth Consent Screen**: https://console.cloud.google.com/apis/credentials/consent?project=bpapp-firebase-485c1
+- **Service Account**: https://console.cloud.google.com/iam-admin/serviceaccounts?project=bpapp-firebase-485c1
 
 ## Summary
 
-The current infrastructure is fully functional with enterprise features active:
-- ✅ **Firebase Project**: `bpapp-firebase-485c1` (configured with Firestore collections)
-- ✅ **Google Cloud Project**: Same as Firebase (APIs enabled + service account ready)
-- ✅ **OAuth**: Working with all necessary scopes
-- ✅ **Google Sheets**: Individual user spreadsheets with protection + multi-destination
-- ✅ **Local Storage**: SQLite offline-first architecture
-- ✅ **Firebase Firestore**: Active with educators/students collections and sample data
-- ✅ **Dynamic Dropdowns**: Firebase-powered student/educator selection
-- ✅ **Multi-destination Sheets**: Educator mapping system implemented
+### What's Working ✅
+- Teacher authentication and spreadsheet creation
+- Educator detection based on Firebase mappings
+- Educator spreadsheet auto-creation in their Drive
+- Auto-sharing with service account (with full Drive scope)
+- Firebase backend with dynamic dropdowns
+- Local SQLite storage with sync
 
-## Enterprise Features Status
-1. ✅ **Service Account Integration** - Ready for centralized spreadsheet management
-2. ✅ **Firebase Firestore Backend** - Collections created with sample data
-3. ✅ **Dynamic UI Components** - Firebase dropdowns replacing text fields
-4. ✅ **Multi-destination Saving** - Automatic educator sheet population
-5. 🧪 **Testing Phase** - Verifying all enterprise functionality
+### What Needs Fixing ⚠️
+- Multi-destination saving to educator spreadsheets
+- Service account write access to educator sheets
+- Proper initialization of service account for educator writes
 
-**Latest APK**: Release build available at `build/app/outputs/flutter-apk/app-release.apk` (24.6MB)
-**Current Branch**: `service-account-final` with all enterprise features active
+### Next Steps (Tomorrow)
+1. Debug why educator entries aren't being saved
+2. Check service account initialization in multi-destination flow
+3. Verify spreadsheet discovery for educators
+4. Test with detailed logging to identify failure point
+
+**Latest APK**: Release build at `build/app/outputs/flutter-apk/app-release.apk` (25.8MB)
+**Current Branch**: `service-account-final`
+**Repository**: https://github.com/YonSCProjects/BPA_Flutter

@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../data/models/student_record.dart';
+import 'service_account_jwt_auth.dart';
 
 /// Service Account based Google Sheets Service
 /// 
@@ -19,6 +20,10 @@ import '../data/models/student_record.dart';
 /// Falls back to GoogleSheetsService when disabled.
 class ServiceAccountSheetsService extends ChangeNotifier {
   static const String _serviceAccountAssetPath = 'assets/service_account.json';
+  
+  // Google Workspace admin email for impersonation
+  static const String adminEmail = 'admin@bpappedu.com'; // YOUR WORKSPACE EMAIL
+  
   static const List<String> _scopes = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file',
@@ -26,10 +31,11 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   ];
 
   // Service account components
-  AutoRefreshingAuthClient? _authClient;
+  AuthClient? _authClient; // Changed to support custom JWT auth
   sheets.SheetsApi? _sheetsApi;
   drive.DriveApi? _driveApi;
   ServiceAccountCredentials? _credentials;
+  Map<String, dynamic>? _credentialsJson; // Store full JSON for JWT auth
   
   // State management
   bool _isInitialized = false;
@@ -46,6 +52,8 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   Future<bool> initialize() async {
     if (!isEnabled) {
       _logDebug('Service account disabled in config - skipping initialization');
+      _logDebug('AppConfig.useServiceAccount: ${AppConfig.useServiceAccount}');
+      _logDebug('AppConfig.emergencyDisable: ${AppConfig.emergencyDisable}');
       return false;
     }
     
@@ -53,7 +61,8 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     _setError(null);
     
     try {
-      _logDebug('Starting service account initialization...');
+      _logDebug('🚀 Starting service account initialization...');
+      _logDebug('Config: useServiceAccount=${AppConfig.useServiceAccount}, emergencyDisable=${AppConfig.emergencyDisable}');
       
       // Load service account credentials from assets
       await _loadCredentials();
@@ -65,12 +74,14 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       _initializeApis();
       
       _isInitialized = true;
-      _logDebug('Service account initialization successful');
+      _logDebug('✅ Service account initialization successful!');
+      _logDebug('Ready to create educator spreadsheets with ownership transfer');
       return true;
       
-    } catch (e) {
+    } catch (e, stackTrace) {
       _setError('שגיאה באתחול שירות החשבון: ${e.toString()}');
-      _logDebug('Service account initialization failed: $e');
+      _logDebug('❌ Service account initialization failed: $e');
+      _logDebug('Stack trace: $stackTrace');
       return false;
     } finally {
       _setLoading(false);
@@ -81,31 +92,44 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   Future<void> _loadCredentials() async {
     try {
       _logDebug('Loading service account credentials from $_serviceAccountAssetPath');
+      print('🔐 Loading service account from: $_serviceAccountAssetPath');
       
       final String credentialsJson = await rootBundle.loadString(_serviceAccountAssetPath);
-      final Map<String, dynamic> credentialsMap = jsonDecode(credentialsJson);
+      _credentialsJson = jsonDecode(credentialsJson); // Store full JSON
       
-      _credentials = ServiceAccountCredentials.fromJson(credentialsMap);
+      _credentials = ServiceAccountCredentials.fromJson(_credentialsJson!);
       _logDebug('Service account credentials loaded successfully');
-      _logDebug('Project ID: ${_credentials!.projectId}');
       _logDebug('Client Email: ${_credentials!.email}');
+      print('✅ Service account loaded: ${_credentials!.email}');
       
     } catch (e) {
+      print('❌ Failed to load service account: $e');
       throw Exception('Failed to load service account credentials: $e');
     }
   }
   
-  /// Create authenticated HTTP client using service account
+  /// Create authenticated HTTP client using service account with impersonation
   Future<void> _createAuthenticatedClient() async {
-    if (_credentials == null) {
+    if (_credentials == null || _credentialsJson == null) {
       throw Exception('Service account credentials not loaded');
     }
     
     try {
-      _logDebug('Creating authenticated client with scopes: $_scopes');
+      _logDebug('Creating authenticated client with JWT impersonation');
+      _logDebug('Service account: ${_credentials!.email}');
+      _logDebug('Impersonating user: $adminEmail');
+      _logDebug('Scopes: $_scopes');
       
-      _authClient = await clientViaServiceAccount(_credentials!, _scopes);
-      _logDebug('Authenticated client created successfully');
+      // Use custom JWT authentication with impersonation
+      _authClient = await ServiceAccountJWTAuth.createImpersonatedClient(
+        serviceAccountJson: _credentialsJson!,
+        scopes: _scopes,
+        impersonatedUser: adminEmail, // admin@bpappedu.com - NOW WITH PROPER IMPERSONATION!
+      );
+      
+      _logDebug('✅ Authenticated client created with impersonation!');
+      _logDebug('✅ Service account is now acting as: $adminEmail');
+      print('🎯 IMPERSONATION ACTIVE: Service account is now admin@bpappedu.com');
       
     } catch (e) {
       throw Exception('Failed to create authenticated client: $e');
@@ -181,6 +205,55 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     }
   }
   
+  /// Find existing educator spreadsheet
+  Future<String?> findEducatorSpreadsheet(String educatorEmail) async {
+    if (!_isInitialized || _driveApi == null) {
+      _logDebug('Service account not initialized for spreadsheet search');
+      return null;
+    }
+    
+    try {
+      _logDebug('🔍 Searching for educator spreadsheet owned by: $educatorEmail');
+      
+      // Search for BPApp files owned by the educator
+      final query = "name = 'BPApp' and "
+                   "mimeType='application/vnd.google-apps.spreadsheet' and "
+                   "trashed=false and "
+                   "'$educatorEmail' in owners";
+      
+      final response = await _driveApi!.files.list(
+        q: query,
+        spaces: 'drive',
+        $fields: 'files(id,name,owners)',
+      );
+      
+      if (response.files != null && response.files!.isNotEmpty) {
+        final spreadsheetId = response.files!.first.id!;
+        _logDebug('✅ Found existing educator spreadsheet: $spreadsheetId');
+        return spreadsheetId;
+      }
+      
+      _logDebug('No existing educator spreadsheet found');
+      return null;
+      
+    } catch (e) {
+      _logDebug('Error searching for educator spreadsheet: $e');
+      return null;
+    }
+  }
+  
+  /// Public method to create educator spreadsheet with ownership transfer
+  Future<String?> createEducatorSpreadsheet(String educatorEmail) async {
+    if (!_isInitialized || _sheetsApi == null || _driveApi == null) {
+      _logDebug('Service account not initialized for educator spreadsheet creation');
+      return null;
+    }
+    
+    // Use educator email as name if no specific name provided
+    final educatorName = educatorEmail.split('@')[0];
+    return await _createEducatorSpreadsheet(educatorEmail, educatorName);
+  }
+  
   /// Create new spreadsheet for educator
   Future<String?> _createEducatorSpreadsheet(String educatorEmail, String educatorName) async {
     if (_sheetsApi == null) return null;
@@ -189,7 +262,7 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       // Create spreadsheet with Hebrew RTL support
       final spreadsheet = sheets.Spreadsheet(
         properties: sheets.SpreadsheetProperties(
-          title: 'BPApp - $educatorName',
+          title: 'BPApp',
           locale: 'en_US',
           timeZone: 'Asia/Jerusalem',
         ),
@@ -320,23 +393,25 @@ class ServiceAccountSheetsService extends ChangeNotifier {
         _logDebug('Could not read current permissions: $e');
       }
       
-      // STEP 1: Transfer ownership to educator (moves to their My Drive)
+      // WITH PROPER IMPERSONATION, WE CAN NOW TRANSFER OWNERSHIP!
+      _logDebug('🚀 OWNERSHIP TRANSFER WITH IMPERSONATION');
+      _logDebug('Service account impersonating: $adminEmail');
+      
+      // Transfer ownership to educator (will appear in their My Drive)
       final ownerPermission = drive.Permission(
         type: 'user',
         role: 'owner',
         emailAddress: educatorEmail,
       );
       
-      _logDebug('Attempting ownership transfer via Drive API...');
-      _logDebug('Permission config: type=${ownerPermission.type}, role=${ownerPermission.role}, email=${ownerPermission.emailAddress}');
-      _logDebug('Transfer flags: transferOwnership=true, sendNotificationEmail=true');
+      _logDebug('Transferring ownership to educator: $educatorEmail');
       
       final result = await _driveApi!.permissions.create(
         ownerPermission,
         spreadsheetId,
         transferOwnership: true,
         sendNotificationEmail: true,
-        emailMessage: 'גיליון BPApp נוצר עבורך וזמין ב"הכונן שלי". הוא יופיע בתיקיית "הכונן שלי" שלך.',
+        emailMessage: 'גיליון BPApp נוצר עבורך וזמין ב"הכונן שלי".',
       );
       
       _logDebug('✅ Drive API call completed successfully');

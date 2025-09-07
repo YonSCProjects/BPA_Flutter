@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/google_auth_service.dart';
 import '../../services/google_sheets_service.dart';
 import '../../services/firebase_data_service.dart';
+import '../../services/educator_self_init_service.dart';
 import '../widgets/hebrew_text_field.dart';
 import '../widgets/firebase_dropdown.dart';
 import '../widgets/hebrew_number_picker.dart';
@@ -28,6 +29,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
   late GoogleSheetsService _sheetsService;
   late FormProvider _formProvider;
   late FirebaseDataService _firebaseDataService;
+  late EducatorSelfInitService _educatorInitService;
   Timer? _debounceTimer;
 
   @override
@@ -37,6 +39,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
     _sheetsService = context.read<GoogleSheetsService>();
     _formProvider = context.read<FormProvider>();
     _firebaseDataService = context.read<FirebaseDataService>();
+    _educatorInitService = EducatorSelfInitService(_authService);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeForm();
@@ -89,6 +92,17 @@ class _StudentFormPageState extends State<StudentFormPage> {
       }
       
       if (_authService.isAuthenticated) {
+        // Check if user is an educator and initialize their spreadsheet
+        debugPrint('[EDUCATOR-INIT] Checking if user is an educator...');
+        final isEducator = await _educatorInitService.isEducator();
+        if (isEducator) {
+          debugPrint('[EDUCATOR-INIT] User is an educator, checking for spreadsheet...');
+          final educatorSpreadsheetId = await _educatorInitService.initializeEducatorSpreadsheet();
+          if (educatorSpreadsheetId != null) {
+            debugPrint('[EDUCATOR-INIT] Educator spreadsheet ready: $educatorSpreadsheetId');
+          }
+        }
+        
         debugPrint('[FORM] Initializing form provider with defaults');
         await _formProvider.initializeWithDefaults(_sheetsService);
       }
@@ -131,6 +145,30 @@ class _StudentFormPageState extends State<StudentFormPage> {
         if (!_sheetsService.isInitialized) {
           await _sheetsService.initialize();
         }
+        
+        // Check if user is an educator and initialize their spreadsheet
+        debugPrint('[EDUCATOR-INIT] Checking if user is an educator...');
+        final isEducator = await _educatorInitService.isEducator();
+        if (isEducator) {
+          debugPrint('[EDUCATOR-INIT] User is an educator, initializing spreadsheet...');
+          final educatorSpreadsheetId = await _educatorInitService.initializeEducatorSpreadsheet();
+          if (educatorSpreadsheetId != null) {
+            debugPrint('[EDUCATOR-INIT] Educator spreadsheet initialized: $educatorSpreadsheetId');
+            // Show success message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'גיליון BPApp נוצר בהצלחה ושותף עם השירות',
+                    textDirection: TextDirection.rtl,
+                  ),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          }
+        }
+        
         await _formProvider.initializeWithDefaults(_sheetsService);
       } else {
         debugPrint('[FORM] Sign-in failed: ${_authService.error}');

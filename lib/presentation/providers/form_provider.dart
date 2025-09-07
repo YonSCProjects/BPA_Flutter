@@ -144,6 +144,11 @@ class FormProvider extends ChangeNotifier {
         sheetsService,
       );
       
+      // Initialize the service (including service account if enabled)
+      _setError('אתחול שירות חשבון...');
+      await multiService.initialize();
+      _setError(null);
+      
       // Use multi-destination service which handles both primary and educator sheets
       final success = await multiService.saveToMultipleDestinations(recordToSave);
       

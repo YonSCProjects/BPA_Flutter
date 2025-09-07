@@ -3,19 +3,44 @@ import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'google_auth_service.dart';
 import 'google_sheets_service.dart';
+import 'service_account_sheets_service.dart';
 import '../data/models/student_record.dart';
 import '../core/educator_mappings.dart';
+import '../config/app_config.dart';
 
 /// Service for handling multi-destination spreadsheet saves
 /// Manages dual saving to both teacher and educator spreadsheets
 class MultiDestinationSheetsService extends ChangeNotifier {
   final GoogleAuthService _authService;
   final GoogleSheetsService _sheetsService;
+  final ServiceAccountSheetsService _serviceAccountService = ServiceAccountSheetsService();
   
   // Cache educator spreadsheet IDs to avoid repeated searches
   final Map<String, String> _educatorSpreadsheetIds = {};
   
   MultiDestinationSheetsService(this._authService, this._sheetsService);
+  
+  /// Initialize the service (including service account if enabled)
+  Future<void> initialize() async {
+    // Initialize service account if enabled
+    if (AppConfig.useServiceAccount && !AppConfig.emergencyDisable) {
+      await _initializeServiceAccount();
+    }
+  }
+  
+  Future<void> _initializeServiceAccount() async {
+    debugPrint('🔐 [MULTI-SAVE] Initializing service account...');
+    print('🔐 [MULTI-SAVE] Initializing service account...'); // Also use print for visibility
+    final success = await _serviceAccountService.initialize();
+    if (success) {
+      debugPrint('✅ [MULTI-SAVE] Service account initialized successfully');
+      print('✅ [MULTI-SAVE] Service account initialized successfully');
+    } else {
+      debugPrint('❌ [MULTI-SAVE] Service account initialization failed');
+      print('❌ [MULTI-SAVE] Service account initialization failed');
+      print('Error: ${_serviceAccountService.error}');
+    }
+  }
   
   /// Save record to multiple destinations (teacher + educator)
   Future<bool> saveToMultipleDestinations(StudentRecord record) async {
@@ -35,10 +60,13 @@ class MultiDestinationSheetsService extends ChangeNotifier {
       debugPrint('✅ [MULTI-SAVE] Successfully saved to teacher\'s spreadsheet');
       
       // Step 2: Check if this class has an associated educator
+      debugPrint('🔍 [MULTI-SAVE] Looking for educator for class name: "${record.className}"');
+      debugPrint('📋 [MULTI-SAVE] Available educator mappings: ${EducatorMappings.getMappings()}');
+      
       final educatorEmail = EducatorMappings.getEducatorEmail(record.className);
       
       if (educatorEmail == null) {
-        debugPrint('ℹ️ [MULTI-SAVE] No educator mapped for class: ${record.classNumber}');
+        debugPrint('ℹ️ [MULTI-SAVE] No educator mapped for class name: "${record.className}"');
         debugPrint('✅ [MULTI-SAVE] Completed: Saved to teacher spreadsheet only (no educator)');
         return true; // Success - saved to teacher's sheet
       }
@@ -105,9 +133,31 @@ class MultiDestinationSheetsService extends ChangeNotifier {
     }
   }
   
-  /// Find educator's existing BPApp or create new one in their My Drive
+  /// Find educator's existing BPApp (educators must create their own)
   Future<String?> _findOrCreateEducatorSpreadsheet(String educatorEmail) async {
     try {
+      // With the new approach, we only FIND educator spreadsheets, not create them
+      // Educators must sign in and create their own spreadsheet first
+      
+      if (_serviceAccountService.isInitialized && AppConfig.useServiceAccount) {
+        debugPrint('🔐 [MULTI-SAVE] Using SERVICE ACCOUNT to find educator spreadsheet');
+        
+        // Try to find existing spreadsheet that educator created and shared
+        final existingId = await _serviceAccountService.findEducatorSpreadsheet(educatorEmail);
+        if (existingId != null) {
+          debugPrint('✅ [MULTI-SAVE] Found educator spreadsheet (educator-owned): $existingId');
+          _educatorSpreadsheetIds[educatorEmail] = existingId;
+          return existingId;
+        }
+        
+        // If not found, educator needs to sign in and initialize
+        debugPrint('⚠️ [MULTI-SAVE] Educator spreadsheet not found');
+        debugPrint('ℹ️ [MULTI-SAVE] Educator must sign in to the app to initialize their BPApp');
+        return null;
+      }
+      
+      // Fallback to OAuth
+      debugPrint('🔑 [MULTI-SAVE] Using OAUTH to find/create educator spreadsheet');
       final client = await _authService.getAuthenticatedClient();
       if (client == null) {
         debugPrint('❌ [MULTI-SAVE] No authenticated client');
@@ -242,7 +292,24 @@ class MultiDestinationSheetsService extends ChangeNotifier {
   
   /// Create a new BPApp spreadsheet and place it in educator's My Drive
   Future<String?> _createEducatorSpreadsheet(String educatorEmail) async {
+    // IMPORTANT: Educators now create their own spreadsheets through educator_self_init_service
+    // This method should not create spreadsheets anymore
+    debugPrint('ℹ️ [MULTI-SAVE] Educator spreadsheet creation disabled');
+    debugPrint('ℹ️ [MULTI-SAVE] Educators must create their own BPApp when they sign in');
+    debugPrint('ℹ️ [MULTI-SAVE] The spreadsheet will be auto-shared with service account');
+    return null;
+    
+    // OLD CODE DISABLED - Keeping for reference
+    /*
     try {
+      // Use service account if available and enabled, otherwise fall back to OAuth
+      if (_serviceAccountService.isInitialized && AppConfig.useServiceAccount) {
+        debugPrint('🔐 [MULTI-SAVE] Using SERVICE ACCOUNT for educator spreadsheet creation');
+        return await _serviceAccountService.createEducatorSpreadsheet(educatorEmail);
+      }
+      
+      // Fallback to OAuth if service account not available
+      debugPrint('🔑 [MULTI-SAVE] Using OAUTH for educator spreadsheet creation (service account not available)');
       final client = await _authService.getAuthenticatedClient();
       if (client == null) {
         debugPrint('❌ [MULTI-SAVE] No authenticated client for spreadsheet creation');
@@ -325,7 +392,27 @@ class MultiDestinationSheetsService extends ChangeNotifier {
         emailAddress: educatorEmail,
       );
       
-      debugPrint('👑 [MULTI-SAVE] Attempting ownership transfer via permissions.create...');
+      // CRITICAL: First ensure admin@bpappedu.com retains editor access
+      debugPrint('👑 [MULTI-SAVE] Step 1: Ensuring admin retains editor access...');
+      try {
+        final adminPermission = drive.Permission(
+          type: 'user',
+          role: 'writer',
+          emailAddress: 'admin@bpappedu.com', // Service account's impersonated user
+        );
+        
+        await driveApi.permissions.create(
+          adminPermission,
+          spreadsheetId,
+          sendNotificationEmail: false,
+        );
+        debugPrint('✅ [MULTI-SAVE] Admin editor access ensured');
+      } catch (e) {
+        debugPrint('⚠️ [MULTI-SAVE] Could not ensure admin access: $e');
+      }
+      
+      // Now safe to transfer ownership
+      debugPrint('👑 [MULTI-SAVE] Step 2: Transferring ownership to educator...');
       debugPrint('👑 [MULTI-SAVE] Permission: type=${ownerPermission.type}, role=${ownerPermission.role}, email=${ownerPermission.emailAddress}');
       debugPrint('👑 [MULTI-SAVE] transferOwnership=true, sendNotificationEmail=true');
       
@@ -430,6 +517,7 @@ class MultiDestinationSheetsService extends ChangeNotifier {
         debugPrint('❌ [MULTI-SAVE] CRITICAL: Could not share OR transfer ownership: $shareError');
       }
     }
+    */
   }
 
   /// Add Hebrew headers to educator's spreadsheet
@@ -459,6 +547,18 @@ class MultiDestinationSheetsService extends ChangeNotifier {
   /// Save record to a specific spreadsheet
   Future<bool> _saveToSpreadsheet(StudentRecord record, String spreadsheetId, String educatorEmail) async {
     try {
+      // Use service account if available for educator spreadsheets
+      if (_serviceAccountService.isInitialized && AppConfig.useServiceAccount) {
+        debugPrint('🔐 [MULTI-SAVE] Using SERVICE ACCOUNT to save to educator spreadsheet');
+        return await _serviceAccountService.saveRecordToEducatorSpreadsheet(
+          record,
+          spreadsheetId,
+          educatorEmail,
+        );
+      }
+      
+      // Fallback to OAuth
+      debugPrint('🔑 [MULTI-SAVE] Using OAUTH to save to educator spreadsheet');
       final client = await _authService.getAuthenticatedClient();
       if (client == null) return false;
       

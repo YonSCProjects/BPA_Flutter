@@ -15,17 +15,38 @@ import 'presentation/pages/student_form_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
-  await Firebase.initializeApp();
-  
-  // Initialize Firebase data service
-  final firebaseService = FirebaseDataService();
-  await firebaseService.initialize();
-  
-  // Initialize educator mappings with Firebase data
-  await EducatorMappings.initialize(firebaseService: firebaseService);
-  
-  runApp(const BPApp());
+  try {
+    // Initialize Firebase
+    await Firebase.initializeApp();
+    
+    // Initialize Firebase data service
+    final firebaseService = FirebaseDataService();
+    await firebaseService.initialize();
+    
+    // Initialize educator mappings with Firebase data
+    await EducatorMappings.initialize(firebaseService: firebaseService);
+    
+    runApp(const BPApp());
+  } catch (e, stackTrace) {
+    print('FATAL ERROR during app initialization: $e');
+    print('Stack trace: $stackTrace');
+    
+    // Show error screen instead of crashing
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'Error initializing app:\n$e',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red, fontSize: 16),
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class BPApp extends StatelessWidget {
