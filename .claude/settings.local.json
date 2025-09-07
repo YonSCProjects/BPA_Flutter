@@ -22,7 +22,9 @@
       "Bash(firebase deploy:*)",
       "Bash(git filter-branch:*)",
       "Bash(where flutter)",
-      "Bash(\"C:\\flutter\\flutter\\bin\\cache\\dart-sdk\\../../artifacts/dart-sdk/../tools/flutter_tools.snapshot\" install --device-id R5CW7197WXT \"C:\\BPA_Sup\\BPA_Fllutter\\build\\app\\outputs\\flutter-apk\\app-release.apk\")"
+      "Bash(\"C:\\flutter\\flutter\\bin\\cache\\dart-sdk\\../../artifacts/dart-sdk/../tools/flutter_tools.snapshot\" install --device-id R5CW7197WXT \"C:\\BPA_Sup\\BPA_Fllutter\\build\\app\\outputs\\flutter-apk\\app-release.apk\")",
+      "WebFetch(domain:console.cloud.google.com)",
+      "Bash(git branch:*)"
     ],
     "deny": [],
     "ask": [],

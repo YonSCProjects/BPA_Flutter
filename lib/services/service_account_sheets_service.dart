@@ -302,7 +302,23 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     if (_driveApi == null) return;
     
     try {
-      _logDebug('Transferring ownership of $spreadsheetId to $educatorEmail');
+      _logDebug('=== SERVICE ACCOUNT OWNERSHIP TRANSFER ===');
+      _logDebug('Spreadsheet ID: $spreadsheetId');
+      _logDebug('Target educator: $educatorEmail');
+      _logDebug('Service account email: ${_credentials?.email}');
+      
+      // Check current permissions first
+      try {
+        final currentPermissions = await _driveApi!.permissions.list(spreadsheetId);
+        _logDebug('Current permissions before transfer:');
+        if (currentPermissions.permissions != null) {
+          for (final perm in currentPermissions.permissions!) {
+            _logDebug('  ${perm.type}/${perm.role} - ${perm.emailAddress}');
+          }
+        }
+      } catch (e) {
+        _logDebug('Could not read current permissions: $e');
+      }
       
       // STEP 1: Transfer ownership to educator (moves to their My Drive)
       final ownerPermission = drive.Permission(
@@ -311,7 +327,11 @@ class ServiceAccountSheetsService extends ChangeNotifier {
         emailAddress: educatorEmail,
       );
       
-      await _driveApi!.permissions.create(
+      _logDebug('Attempting ownership transfer via Drive API...');
+      _logDebug('Permission config: type=${ownerPermission.type}, role=${ownerPermission.role}, email=${ownerPermission.emailAddress}');
+      _logDebug('Transfer flags: transferOwnership=true, sendNotificationEmail=true');
+      
+      final result = await _driveApi!.permissions.create(
         ownerPermission,
         spreadsheetId,
         transferOwnership: true,
@@ -319,7 +339,26 @@ class ServiceAccountSheetsService extends ChangeNotifier {
         emailMessage: 'גיליון BPApp נוצר עבורך וזמין ב"הכונן שלי". הוא יופיע בתיקיית "הכונן שלי" שלך.',
       );
       
-      _logDebug('✅ Transferred ownership to educator - file now in their My Drive');
+      _logDebug('✅ Drive API call completed successfully');
+      _logDebug('✅ Result permission ID: ${result.id}');
+      _logDebug('✅ Result role: ${result.role}');
+      
+      // Verify transfer by checking file ownership
+      try {
+        final fileInfo = await _driveApi!.files.get(spreadsheetId, $fields: 'owners,shared') as drive.File;
+        _logDebug('POST-TRANSFER verification:');
+        _logDebug('  Owners: ${fileInfo.owners?.map((o) => o.emailAddress).toList()}');
+        _logDebug('  Shared: ${fileInfo.shared}');
+        
+        final isEducatorOwner = fileInfo.owners?.any((o) => o.emailAddress == educatorEmail) == true;
+        if (isEducatorOwner) {
+          _logDebug('✅✅✅ VERIFICATION SUCCESS: Educator is now owner!');
+        } else {
+          _logDebug('❌❌❌ VERIFICATION FAILED: Educator not found in owners!');
+        }
+      } catch (e) {
+        _logDebug('Could not verify ownership transfer: $e');
+      }
       
       // STEP 2: Ensure service account retains writer access
       try {
@@ -343,7 +382,22 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       }
       
     } catch (e) {
-      _logDebug('❌ Error transferring ownership: $e');
+      _logDebug('❌❌❌ === OWNERSHIP TRANSFER FAILED ===');
+      _logDebug('❌❌❌ Error type: ${e.runtimeType}');
+      _logDebug('❌❌❌ Error details: $e');
+      _logDebug('❌❌❌ Full error string: ${e.toString()}');
+      
+      // Analyze the error
+      final errorStr = e.toString();
+      if (errorStr.contains('403')) {
+        _logDebug('🔒 DIAGNOSIS: 403 Forbidden - Service account lacks ownership transfer permission');
+        _logDebug('🔒 SOLUTION: Service account needs domain-wide delegation or different approach');
+      } else if (errorStr.contains('400')) {
+        _logDebug('⚠️ DIAGNOSIS: 400 Bad Request - Invalid API call parameters');
+      } else if (errorStr.contains('404')) {
+        _logDebug('📂 DIAGNOSIS: 404 Not Found - Spreadsheet or user not found');
+      }
+      
       _logDebug('⚠️ Falling back to sharing (file will be in Shared with me)');
       
       // Fallback: Just share if ownership transfer fails

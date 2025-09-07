@@ -127,19 +127,37 @@ class MultiDestinationSheetsService extends ChangeNotifier {
                    "'$educatorEmail' in owners";
       
       debugPrint('🔍 [MULTI-SAVE] Search query: $query');
+      debugPrint('🔍 [MULTI-SAVE] Executing search for educator-owned BPApp files...');
       
       final response = await driveApi.files.list(
         q: query,
         spaces: 'drive',
-        $fields: 'files(id,name,owners,capabilities)',
+        $fields: 'files(id,name,owners,capabilities,parents,shared,createdTime)',
       );
       
       debugPrint('🔍 [MULTI-SAVE] Search results: ${response.files?.length ?? 0} files found');
+      
+      // Log all found files for debugging
+      if (response.files != null && response.files!.isNotEmpty) {
+        for (int i = 0; i < response.files!.length; i++) {
+          final file = response.files![i];
+          debugPrint('📋 [MULTI-SAVE] File $i details:');
+          debugPrint('   - Name: ${file.name}');
+          debugPrint('   - ID: ${file.id}');
+          debugPrint('   - Created: ${file.createdTime}');
+          debugPrint('   - Shared: ${file.shared}');
+          debugPrint('   - Owners: ${file.owners?.map((o) => o.emailAddress).toList()}');
+          debugPrint('   - Parents: ${file.parents}');
+          debugPrint('   - Can Edit: ${file.capabilities?.canEdit}');
+        }
+      }
       
       if (response.files != null && response.files!.isNotEmpty) {
         // Found educator's existing BPApp!
         final file = response.files!.first;
         final spreadsheetId = file.id!;
+        
+        debugPrint('✅ [MULTI-SAVE] Using existing educator BPApp: $spreadsheetId');
         
         // Check if we have edit permission
         final canEdit = file.capabilities?.canEdit ?? false;
@@ -281,7 +299,24 @@ class MultiDestinationSheetsService extends ChangeNotifier {
   /// Make educator the owner of the spreadsheet so it appears in their My Drive
   Future<void> _makeEducatorOwner(drive.DriveApi driveApi, String spreadsheetId, String educatorEmail) async {
     try {
-      debugPrint('👑 [MULTI-SAVE] Transferring ownership to educator for My Drive placement...');
+      debugPrint('👑 [MULTI-SAVE] === OWNERSHIP TRANSFER ATTEMPT ===');
+      debugPrint('👑 [MULTI-SAVE] Target spreadsheet ID: $spreadsheetId');
+      debugPrint('👑 [MULTI-SAVE] Target educator email: $educatorEmail');
+      debugPrint('👑 [MULTI-SAVE] Creating ownership permission...');
+      
+      // First, let's check current permissions
+      try {
+        final currentPermissions = await driveApi.permissions.list(spreadsheetId);
+        debugPrint('🔐 [MULTI-SAVE] Current permissions:');
+        if (currentPermissions.permissions != null) {
+          for (int i = 0; i < currentPermissions.permissions!.length; i++) {
+            final perm = currentPermissions.permissions![i];
+            debugPrint('   Permission $i: ${perm.type}/${perm.role} - ${perm.emailAddress} (${perm.id})');
+          }
+        }
+      } catch (permError) {
+        debugPrint('⚠️ [MULTI-SAVE] Could not read current permissions: $permError');
+      }
       
       // STEP 1: Transfer ownership to educator (moves file to their My Drive)
       final ownerPermission = drive.Permission(
@@ -290,7 +325,11 @@ class MultiDestinationSheetsService extends ChangeNotifier {
         emailAddress: educatorEmail,
       );
       
-      await driveApi.permissions.create(
+      debugPrint('👑 [MULTI-SAVE] Attempting ownership transfer via permissions.create...');
+      debugPrint('👑 [MULTI-SAVE] Permission: type=${ownerPermission.type}, role=${ownerPermission.role}, email=${ownerPermission.emailAddress}');
+      debugPrint('👑 [MULTI-SAVE] transferOwnership=true, sendNotificationEmail=true');
+      
+      final permissionResult = await driveApi.permissions.create(
         ownerPermission,
         spreadsheetId,
         transferOwnership: true,
@@ -298,7 +337,30 @@ class MultiDestinationSheetsService extends ChangeNotifier {
         emailMessage: 'גיליון BPApp נוצר עבורך וזמין ב"הכונן שלי". הוא יופיע בתיקיית "הכונן שלי" שלך.',
       );
       
-      debugPrint('✅✅✅ [MULTI-SAVE] OWNERSHIP TRANSFERRED - FILE NOW IN EDUCATOR\'S MY DRIVE!');
+      debugPrint('✅✅✅ [MULTI-SAVE] PERMISSIONS.CREATE COMPLETED!');
+      debugPrint('✅✅✅ [MULTI-SAVE] Result permission ID: ${permissionResult.id}');
+      debugPrint('✅✅✅ [MULTI-SAVE] Result role: ${permissionResult.role}');
+      
+      // Verify the transfer worked by checking file info again
+      try {
+        debugPrint('🔍 [MULTI-SAVE] Verifying ownership transfer by reading file info...');
+        final fileInfo = await driveApi.files.get(
+          spreadsheetId, 
+          $fields: 'id,name,owners,shared,parents'
+        ) as drive.File;
+        debugPrint('📋 [MULTI-SAVE] POST-TRANSFER file info:');
+        debugPrint('   - Shared: ${fileInfo.shared}');
+        debugPrint('   - Owners: ${fileInfo.owners?.map((o) => o.emailAddress).toList()}');
+        debugPrint('   - Parents: ${fileInfo.parents}');
+        
+        if (fileInfo.owners?.any((o) => o.emailAddress == educatorEmail) == true) {
+          debugPrint('✅✅✅ [MULTI-SAVE] VERIFICATION: Educator is now listed as owner!');
+        } else {
+          debugPrint('❌❌❌ [MULTI-SAVE] VERIFICATION FAILED: Educator not found in owners list!');
+        }
+      } catch (verifyError) {
+        debugPrint('⚠️ [MULTI-SAVE] Could not verify ownership transfer: $verifyError');
+      }
       debugPrint('📁 [MULTI-SAVE] Educator can find BPApp in their "My Drive" folder');
       
       // STEP 2: Ensure current user/service maintains writer access
@@ -325,7 +387,25 @@ class MultiDestinationSheetsService extends ChangeNotifier {
       }
       
     } catch (e) {
-      debugPrint('❌ [MULTI-SAVE] ERROR: Ownership transfer failed: $e');
+      debugPrint('❌❌❌ [MULTI-SAVE] === OWNERSHIP TRANSFER FAILED ===');
+      debugPrint('❌❌❌ [MULTI-SAVE] Error type: ${e.runtimeType}');
+      debugPrint('❌❌❌ [MULTI-SAVE] Error message: $e');
+      debugPrint('❌❌❌ [MULTI-SAVE] Full error: ${e.toString()}');
+      
+      if (e.toString().contains('403')) {
+        debugPrint('🔒 [MULTI-SAVE] ERROR ANALYSIS: 403 Forbidden - Service account lacks permission');
+        debugPrint('🔒 [MULTI-SAVE] This means service account cannot transfer file ownership');
+        debugPrint('🔒 [MULTI-SAVE] Possible causes:');
+        debugPrint('🔒 [MULTI-SAVE]   1. Service account needs domain-wide delegation');
+        debugPrint('🔒 [MULTI-SAVE]   2. Service account lacks Drive API ownership permissions');
+        debugPrint('🔒 [MULTI-SAVE]   3. Target user domain restrictions');
+      }
+      
+      if (e.toString().contains('400')) {
+        debugPrint('⚠️ [MULTI-SAVE] ERROR ANALYSIS: 400 Bad Request - Invalid API usage');
+        debugPrint('⚠️ [MULTI-SAVE] This means API call structure is incorrect');
+      }
+      
       debugPrint('⚠️ [MULTI-SAVE] FALLBACK: Will share as editor (file goes to Shared with me)');
       
       // Fallback: Share as writer if ownership transfer fails
