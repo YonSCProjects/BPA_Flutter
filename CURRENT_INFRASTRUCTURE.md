@@ -4,7 +4,7 @@ Last Updated: January 2025
 
 ## Project Status
 ✅ **EDUCATOR SELF-INITIALIZATION IMPLEMENTED** - Educators create their own spreadsheets with auto-sharing
-⚠️ **KNOWN ISSUE**: Educator entries not being saved to educator spreadsheets (needs debugging)
+⚠️ **KNOWN ISSUE**: Teacher entries not being saved to educator spreadsheets (needs debugging)
 
 ## Overview
 This document captures all existing Google Cloud, Firebase, and OAuth configurations in BPApp. The app now implements educator self-initialization where educators create their own BPApp spreadsheets that are automatically shared with the service account.
