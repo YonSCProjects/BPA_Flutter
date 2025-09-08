@@ -191,16 +191,31 @@ class EducatorSelfInitService extends ChangeNotifier {
   /// Share the spreadsheet with service account as editor
   Future<void> _shareWithServiceAccount(String spreadsheetId) async {
     try {
+      print('🔗🔗🔗 [EDUCATOR-INIT] === SHARING WITH SERVICE ACCOUNT ===');
+      print('🔗 Service account email: $serviceAccountEmail');
+      print('🔗 Spreadsheet ID: $spreadsheetId');
+      
       final client = await _authService.getAuthenticatedClient();
       if (client == null) {
-        debugPrint('❌ [EDUCATOR-INIT] No authenticated client for sharing');
+        print('❌ No authenticated client for sharing');
         return;
       }
       
       final driveApi = drive.DriveApi(client);
       
-      debugPrint('🔗 [EDUCATOR-INIT] Sharing with service account: $serviceAccountEmail');
-      debugPrint('🔗 [EDUCATOR-INIT] Spreadsheet ID: $spreadsheetId');
+      // First, let's check current permissions
+      print('🔗 Checking current permissions...');
+      try {
+        final currentPerms = await driveApi.permissions.list(spreadsheetId);
+        print('📋 Current permissions on spreadsheet:');
+        if (currentPerms.permissions != null) {
+          for (final perm in currentPerms.permissions!) {
+            print('   - ${perm.emailAddress}: ${perm.role} (${perm.type})');
+          }
+        }
+      } catch (e) {
+        print('⚠️ Could not list current permissions: $e');
+      }
       
       // Create permission for service account
       final permission = drive.Permission(
@@ -209,7 +224,10 @@ class EducatorSelfInitService extends ChangeNotifier {
         emailAddress: serviceAccountEmail,
       );
       
-      debugPrint('🔗 [EDUCATOR-INIT] Creating permission: type=user, role=writer, email=$serviceAccountEmail');
+      print('🔗 Creating new permission:');
+      print('   Type: user');
+      print('   Role: writer (editor)');
+      print('   Email: $serviceAccountEmail');
       
       await driveApi.permissions.create(
         permission,
@@ -217,18 +235,36 @@ class EducatorSelfInitService extends ChangeNotifier {
         sendNotificationEmail: false, // Don't send email to service account
       );
       
-      debugPrint('✅ [EDUCATOR-INIT] Successfully shared with service account');
+      print('✅✅✅ Successfully shared with service account!');
+      
+      // Verify the permission was added
+      try {
+        final updatedPerms = await driveApi.permissions.list(spreadsheetId);
+        print('📋 Updated permissions:');
+        if (updatedPerms.permissions != null) {
+          for (final perm in updatedPerms.permissions!) {
+            print('   - ${perm.emailAddress}: ${perm.role} ${perm.emailAddress == serviceAccountEmail ? "✅" : ""}');
+          }
+        }
+      } catch (e) {
+        print('⚠️ Could not verify permissions: $e');
+      }
+      
+      print('🔗 === SHARING COMPLETE ===\n');
       
     } catch (e) {
-      debugPrint('❌ [EDUCATOR-INIT] Error sharing with service account: $e');
-      debugPrint('❌ [EDUCATOR-INIT] Error type: ${e.runtimeType}');
+      print('❌❌❌ Error sharing with service account');
+      print('   Error: $e');
+      print('   Error type: ${e.runtimeType}');
+      
       if (e.toString().contains('403')) {
-        debugPrint('❌ [EDUCATOR-INIT] Permission denied - may need broader OAuth scope');
-        debugPrint('❌ [EDUCATOR-INIT] Current scopes may not include drive sharing permissions');
+        print('🔒 Permission denied - OAuth scope issue');
+        print('   May need https://www.googleapis.com/auth/drive scope');
       }
-      // Don't throw - allow spreadsheet creation to succeed even if sharing fails
-      // User can manually share later
-      debugPrint('⚠️ [EDUCATOR-INIT] Spreadsheet created but not shared - educator must share manually');
+      
+      print('⚠️ Spreadsheet created but not shared');
+      print('   Educator must manually share with: $serviceAccountEmail');
+      print('🔗 === SHARING FAILED ===\n');
     }
   }
   

@@ -73,6 +73,20 @@ class _StudentFormPageState extends State<StudentFormPage> {
         debugPrint('[FORM] Initializing sheets service with service account');
         await _sheetsService.initialize();
       }
+      
+      // CRITICAL: Check if user is an educator even in service account mode!
+      if (_authService.isAuthenticated) {
+        debugPrint('[EDUCATOR-INIT] Checking if user is an educator (service account mode)...');
+        final isEducator = await _educatorInitService.isEducator();
+        if (isEducator) {
+          debugPrint('[EDUCATOR-INIT] User is an educator, initializing their spreadsheet...');
+          final educatorSpreadsheetId = await _educatorInitService.initializeEducatorSpreadsheet();
+          if (educatorSpreadsheetId != null) {
+            debugPrint('[EDUCATOR-INIT] Educator spreadsheet initialized: $educatorSpreadsheetId');
+          }
+        }
+      }
+      
       debugPrint('[FORM] Initializing form provider with defaults');
       await _formProvider.initializeWithDefaults(_sheetsService);
     } else {
@@ -753,6 +767,21 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Future<void> _saveRecord(FormProvider formProvider) async {
+    // First check if required fields are filled
+    final record = formProvider.currentRecord;
+    if (record.studentName.trim().isEmpty || record.className.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'יש למלא את שם התלמיד ושם הכיתה',
+            textDirection: TextDirection.rtl,
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
     if (_formKey.currentState?.validate() ?? false) {
       final success = await formProvider.saveRecord(_sheetsService);
       

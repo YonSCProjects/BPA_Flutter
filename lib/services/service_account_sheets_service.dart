@@ -11,6 +11,13 @@ import '../config/app_config.dart';
 import '../data/models/student_record.dart';
 import 'service_account_jwt_auth.dart';
 
+// Extension for DateTime comparison
+extension DateTimeComparison on DateTime {
+  bool isEqual(DateTime other) {
+    return year == other.year && month == other.month && day == other.day;
+  }
+}
+
 /// Service Account based Google Sheets Service
 /// 
 /// This service uses service account credentials for centralized
@@ -50,10 +57,13 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   
   /// Initialize service account authentication
   Future<bool> initialize() async {
+    print('🚀🚀🚀 [SERVICE-ACCOUNT] === INITIALIZATION STARTING ===');
+    print('🚀 isEnabled check: $isEnabled');
+    print('🚀 useServiceAccount: ${AppConfig.useServiceAccount}');
+    print('🚀 emergencyDisable: ${AppConfig.emergencyDisable}');
+    
     if (!isEnabled) {
-      _logDebug('Service account disabled in config - skipping initialization');
-      _logDebug('AppConfig.useServiceAccount: ${AppConfig.useServiceAccount}');
-      _logDebug('AppConfig.emergencyDisable: ${AppConfig.emergencyDisable}');
+      print('❌ Service account disabled in config - skipping initialization');
       return false;
     }
     
@@ -61,27 +71,34 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     _setError(null);
     
     try {
-      _logDebug('🚀 Starting service account initialization...');
-      _logDebug('Config: useServiceAccount=${AppConfig.useServiceAccount}, emergencyDisable=${AppConfig.emergencyDisable}');
+      print('🚀 Step 1: Loading credentials...');
       
       // Load service account credentials from assets
       await _loadCredentials();
+      print('✅ Credentials loaded: ${_credentials?.email}');
       
+      print('🚀 Step 2: Creating authenticated client...');
       // Create authenticated client
       await _createAuthenticatedClient();
+      print('✅ Auth client created');
       
+      print('🚀 Step 3: Initializing Google APIs...');
       // Initialize APIs
       _initializeApis();
+      print('✅ APIs initialized');
       
       _isInitialized = true;
-      _logDebug('✅ Service account initialization successful!');
-      _logDebug('Ready to create educator spreadsheets with ownership transfer');
+      print('✅✅✅ SERVICE ACCOUNT READY!');
+      print('   Email: ${_credentials?.email}');
+      print('   Initialized: $_isInitialized');
+      print('🚀 === INITIALIZATION COMPLETE ===\n');
       return true;
       
     } catch (e, stackTrace) {
+      print('❌❌❌ SERVICE ACCOUNT INITIALIZATION FAILED');
+      print('   Error: $e');
+      print('   Stack: $stackTrace');
       _setError('שגיאה באתחול שירות החשבון: ${e.toString()}');
-      _logDebug('❌ Service account initialization failed: $e');
-      _logDebug('Stack trace: $stackTrace');
       return false;
     } finally {
       _setLoading(false);
@@ -108,28 +125,22 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     }
   }
   
-  /// Create authenticated HTTP client using service account with impersonation
+  /// Create authenticated HTTP client using service account WITHOUT impersonation
   Future<void> _createAuthenticatedClient() async {
     if (_credentials == null || _credentialsJson == null) {
       throw Exception('Service account credentials not loaded');
     }
     
     try {
-      _logDebug('Creating authenticated client with JWT impersonation');
-      _logDebug('Service account: ${_credentials!.email}');
-      _logDebug('Impersonating user: $adminEmail');
-      _logDebug('Scopes: $_scopes');
+      print('🔐 Creating authenticated client WITHOUT impersonation');
+      print('   Service account: ${_credentials!.email}');
+      print('   Scopes: $_scopes');
       
-      // Use custom JWT authentication with impersonation
-      _authClient = await ServiceAccountJWTAuth.createImpersonatedClient(
-        serviceAccountJson: _credentialsJson!,
-        scopes: _scopes,
-        impersonatedUser: adminEmail, // admin@bpappedu.com - NOW WITH PROPER IMPERSONATION!
-      );
+      // Use direct service account authentication (no impersonation)
+      _authClient = await clientViaServiceAccount(_credentials!, _scopes);
       
-      _logDebug('✅ Authenticated client created with impersonation!');
-      _logDebug('✅ Service account is now acting as: $adminEmail');
-      print('🎯 IMPERSONATION ACTIVE: Service account is now admin@bpappedu.com');
+      print('✅ Authenticated client created successfully!');
+      print('   Service account ready: ${_credentials!.email}');
       
     } catch (e) {
       throw Exception('Failed to create authenticated client: $e');
@@ -147,10 +158,10 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     _logDebug('Google APIs initialized successfully');
   }
   
-  /// Create or access centralized spreadsheet for educator
+  /// Access educator's existing spreadsheet (educator-owned)
   /// 
-  /// Unlike OAuth approach, this creates/manages spreadsheets centrally
-  /// with service account as owner and educators as editors
+  /// This method only FINDS existing educator spreadsheets
+  /// Educators must create their own spreadsheets through self-initialization
   Future<String?> createOrAccessEducatorSpreadsheet(String educatorEmail, String educatorName) async {
     if (!_isInitialized) {
       _setError('שירות החשבון לא מאותחל');
@@ -158,25 +169,26 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     }
     
     try {
-      _logDebug('Creating/accessing spreadsheet for educator: $educatorName ($educatorEmail)');
+      _logDebug('Accessing educator spreadsheet for: $educatorName ($educatorEmail)');
       
-      // Search for existing educator spreadsheet
-      final existingSpreadsheetId = await _findEducatorSpreadsheet(educatorEmail);
+      // Only search for existing educator spreadsheet - NO CREATION
+      final existingSpreadsheetId = await findEducatorSpreadsheet(educatorEmail);
       
       if (existingSpreadsheetId != null) {
-        _logDebug('Found existing spreadsheet: $existingSpreadsheetId');
+        _logDebug('✅ Found existing educator-owned spreadsheet: $existingSpreadsheetId');
         return existingSpreadsheetId;
       }
       
-      // Create new spreadsheet for educator
-      final spreadsheetId = await _createEducatorSpreadsheet(educatorEmail, educatorName);
-      _logDebug('Created new spreadsheet: $spreadsheetId');
+      // No spreadsheet found - educator needs to sign in first
+      _logDebug('⚠️ No educator spreadsheet found');
+      _logDebug('ℹ️ Educator must sign in to create their BPApp first');
+      _setError('המחנך צריך להתחבר לאפליקציה כדי ליצור את הגיליון שלו');
       
-      return spreadsheetId;
+      return null;
       
     } catch (e) {
-      _setError('שגיאה ביצירת גיליון למחנך: ${e.toString()}');
-      _logDebug('Error creating/accessing educator spreadsheet: $e');
+      _setError('שגיאה בגישה לגיליון המחנך: ${e.toString()}');
+      _logDebug('Error accessing educator spreadsheet: $e');
       return null;
     }
   }
@@ -207,94 +219,138 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   
   /// Find existing educator spreadsheet
   Future<String?> findEducatorSpreadsheet(String educatorEmail) async {
+    print('🔍🔍🔍 [SERVICE-ACCOUNT] === FINDING EDUCATOR SPREADSHEET ===');
+    print('🔍 Target educator email: $educatorEmail');
+    print('🔍 Service account initialized: $_isInitialized');
+    print('🔍 Service account email: ${_credentials?.email}');
+    
     if (!_isInitialized || _driveApi == null) {
-      _logDebug('Service account not initialized for spreadsheet search');
+      print('❌ Service account not initialized for spreadsheet search');
+      print('   _isInitialized: $_isInitialized');
+      print('   _driveApi null: ${_driveApi == null}');
       return null;
     }
     
     try {
-      _logDebug('🔍 Searching for educator spreadsheet owned by: $educatorEmail');
+      print('🔍 Step 1: Listing ALL files service account can see...');
       
-      // Search for BPApp files owned by the educator
+      // First, let's see ALL files the service account has access to
+      final allFilesResponse = await _driveApi!.files.list(
+        q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+        spaces: 'drive',
+        $fields: 'files(id,name,owners,permissions,capabilities)',
+        pageSize: 100,
+      );
+      
+      print('📋 Service account can see ${allFilesResponse.files?.length ?? 0} total spreadsheets');
+      
+      if (allFilesResponse.files != null) {
+        for (int i = 0; i < allFilesResponse.files!.length; i++) {
+          final file = allFilesResponse.files![i];
+          print('📄 File $i: ${file.name}');
+          print('   ID: ${file.id}');
+          if (file.owners != null) {
+            print('   Owners: ${file.owners!.map((o) => o.emailAddress).join(", ")}');
+          }
+          print('   Can Edit: ${file.capabilities?.canEdit}');
+          print('   Can Share: ${file.capabilities?.canShare}');
+        }
+      }
+      
+      print('\n🔍 Step 2: Looking for BPApp files specifically...');
+      
+      // Now search for BPApp files
       final query = "name = 'BPApp' and "
                    "mimeType='application/vnd.google-apps.spreadsheet' and "
-                   "trashed=false and "
-                   "'$educatorEmail' in owners";
+                   "trashed=false";
+      
+      print('🔍 Search query: $query');
       
       final response = await _driveApi!.files.list(
         q: query,
         spaces: 'drive',
-        $fields: 'files(id,name,owners)',
+        $fields: 'files(id,name,owners,permissions,capabilities)',
       );
+      
+      print('📋 Found ${response.files?.length ?? 0} BPApp files');
       
       if (response.files != null && response.files!.isNotEmpty) {
-        final spreadsheetId = response.files!.first.id!;
-        _logDebug('✅ Found existing educator spreadsheet: $spreadsheetId');
-        return spreadsheetId;
+        // Look through all BPApp files to find one owned by educator
+        for (int i = 0; i < response.files!.length; i++) {
+          final file = response.files![i];
+          print('\n🔍 Checking BPApp file $i:');
+          print('   Name: ${file.name}');
+          print('   ID: ${file.id}');
+          print('   Can Edit: ${file.capabilities?.canEdit}');
+          
+          // Check owners
+          if (file.owners != null) {
+            print('   Owners:');
+            for (final owner in file.owners!) {
+              print('     - ${owner.emailAddress} ${owner.emailAddress == educatorEmail ? "✅ MATCH!" : ""}');
+              if (owner.emailAddress == educatorEmail) {
+                print('✅✅✅ FOUND educator-owned BPApp!');
+                print('   Spreadsheet ID: ${file.id}');
+                print('   Service account can edit: ${file.capabilities?.canEdit}');
+                
+                // Check permissions in detail
+                if (file.permissions != null) {
+                  print('   Permissions on this file:');
+                  for (final perm in file.permissions!) {
+                    print('     - ${perm.emailAddress}: ${perm.role}');
+                  }
+                }
+                
+                return file.id;
+              }
+            }
+          } else {
+            print('   No owner information available');
+          }
+        }
+      } else {
+        print('❌ No BPApp files found at all');
       }
       
-      _logDebug('No existing educator spreadsheet found');
+      print('❌ No educator-owned BPApp found for: $educatorEmail');
+      print('🔍 === END SEARCH ===\n');
       return null;
       
     } catch (e) {
-      _logDebug('Error searching for educator spreadsheet: $e');
+      print('❌❌❌ Error searching for educator spreadsheet');
+      print('   Error type: ${e.runtimeType}');
+      print('   Error message: $e');
       return null;
     }
   }
   
-  /// Public method to create educator spreadsheet with ownership transfer
+  /// Public method to create educator spreadsheet - DISABLED
+  /// Educators must create their own spreadsheets through self-initialization
   Future<String?> createEducatorSpreadsheet(String educatorEmail) async {
-    if (!_isInitialized || _sheetsApi == null || _driveApi == null) {
-      _logDebug('Service account not initialized for educator spreadsheet creation');
-      return null;
-    }
+    _logDebug('⚠️ Service account spreadsheet creation DISABLED');
+    _logDebug('ℹ️ Educators must sign in to create their own BPApp');
+    _logDebug('ℹ️ The educator self-init service handles this automatically');
+    return null;
     
-    // Use educator email as name if no specific name provided
-    final educatorName = educatorEmail.split('@')[0];
-    return await _createEducatorSpreadsheet(educatorEmail, educatorName);
+    // OLD CODE DISABLED - educators create their own spreadsheets
+    // if (!_isInitialized || _sheetsApi == null || _driveApi == null) {
+    //   _logDebug('Service account not initialized for educator spreadsheet creation');
+    //   return null;
+    // }
+    // final educatorName = educatorEmail.split('@')[0];
+    // return await _createEducatorSpreadsheet(educatorEmail, educatorName);
   }
   
-  /// Create new spreadsheet for educator
+  /// Create new spreadsheet for educator - DISABLED
+  /// This method is no longer used as educators create their own spreadsheets
   Future<String?> _createEducatorSpreadsheet(String educatorEmail, String educatorName) async {
-    if (_sheetsApi == null) return null;
+    _logDebug('⚠️ _createEducatorSpreadsheet called but DISABLED');
+    _logDebug('Educators must create their own spreadsheets');
+    return null;
     
-    try {
-      // Create spreadsheet with Hebrew RTL support
-      final spreadsheet = sheets.Spreadsheet(
-        properties: sheets.SpreadsheetProperties(
-          title: 'BPApp',
-          locale: 'en_US',
-          timeZone: 'Asia/Jerusalem',
-        ),
-        sheets: [
-          sheets.Sheet(
-            properties: sheets.SheetProperties(
-              title: 'נתוני תלמידים',
-              rightToLeft: true,
-              gridProperties: sheets.GridProperties(
-                frozenRowCount: 1,
-                columnCount: 12, // Same as original headers
-              ),
-            ),
-          ),
-        ],
-      );
-      
-      final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
-      final spreadsheetId = response.spreadsheetId!;
-      
-      // Add headers to new spreadsheet
-      await _addHeadersToSpreadsheet(spreadsheetId);
-      
-      // Share with educator (give edit access)
-      await _shareSpreadsheetWithEducator(spreadsheetId, educatorEmail);
-      
-      return spreadsheetId;
-      
-    } catch (e) {
-      _logDebug('Error creating educator spreadsheet: $e');
-      return null;
-    }
+    // OLD CODE DISABLED - keeping for reference
+    // Service account should NOT create educator spreadsheets
+    // Educators create and own their spreadsheets, then share with service account
   }
   
   /// Add Hebrew headers to spreadsheet
@@ -370,130 +426,48 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     }
   }
   
-  /// Transfer spreadsheet ownership to educator (appears in their My Drive)
+  /// Transfer spreadsheet ownership to educator - DISABLED
+  /// This is no longer needed as educators create their own spreadsheets
   Future<void> _shareSpreadsheetWithEducator(String spreadsheetId, String educatorEmail) async {
-    if (_driveApi == null) return;
+    _logDebug('⚠️ _shareSpreadsheetWithEducator called but DISABLED');
+    _logDebug('Ownership transfer not needed - educators own their spreadsheets');
+    return;
+    
+    // OLD CODE DISABLED - ownership transfer not needed
+    // Educators create and own their spreadsheets from the start
+    // They share them with the service account during self-initialization
+  }
+  
+  /// Save student record to educator spreadsheet using spreadsheet ID
+  /// This is used when we already have the spreadsheet ID
+  Future<bool> saveRecordToSpreadsheetById(
+    StudentRecord record,
+    String spreadsheetId,
+    String educatorEmail,
+  ) async {
+    if (!_isInitialized) {
+      _logDebug('❌ Service account not initialized for saving');
+      return false;
+    }
     
     try {
-      _logDebug('=== SERVICE ACCOUNT OWNERSHIP TRANSFER ===');
-      _logDebug('Spreadsheet ID: $spreadsheetId');
-      _logDebug('Target educator: $educatorEmail');
-      _logDebug('Service account email: ${_credentials?.email}');
+      _logDebug('💾 Saving record to educator spreadsheet ID: $spreadsheetId');
+      _logDebug('📋 Record details: ${record.studentName} - ${record.className}');
       
-      // Check current permissions first
-      try {
-        final currentPermissions = await _driveApi!.permissions.list(spreadsheetId);
-        _logDebug('Current permissions before transfer:');
-        if (currentPermissions.permissions != null) {
-          for (final perm in currentPermissions.permissions!) {
-            _logDebug('  ${perm.type}/${perm.role} - ${perm.emailAddress}');
-          }
-        }
-      } catch (e) {
-        _logDebug('Could not read current permissions: $e');
+      // Save record to spreadsheet
+      final success = await _saveRecordToSpreadsheet(spreadsheetId, record);
+      
+      if (success) {
+        _logDebug('✅ Successfully saved record to educator spreadsheet');
+      } else {
+        _logDebug('❌ Failed to save record to educator spreadsheet');
       }
       
-      // WITH PROPER IMPERSONATION, WE CAN NOW TRANSFER OWNERSHIP!
-      _logDebug('🚀 OWNERSHIP TRANSFER WITH IMPERSONATION');
-      _logDebug('Service account impersonating: $adminEmail');
-      
-      // Transfer ownership to educator (will appear in their My Drive)
-      final ownerPermission = drive.Permission(
-        type: 'user',
-        role: 'owner',
-        emailAddress: educatorEmail,
-      );
-      
-      _logDebug('Transferring ownership to educator: $educatorEmail');
-      
-      final result = await _driveApi!.permissions.create(
-        ownerPermission,
-        spreadsheetId,
-        transferOwnership: true,
-        sendNotificationEmail: true,
-        emailMessage: 'גיליון BPApp נוצר עבורך וזמין ב"הכונן שלי".',
-      );
-      
-      _logDebug('✅ Drive API call completed successfully');
-      _logDebug('✅ Result permission ID: ${result.id}');
-      _logDebug('✅ Result role: ${result.role}');
-      
-      // Verify transfer by checking file ownership
-      try {
-        final fileInfo = await _driveApi!.files.get(spreadsheetId, $fields: 'owners,shared') as drive.File;
-        _logDebug('POST-TRANSFER verification:');
-        _logDebug('  Owners: ${fileInfo.owners?.map((o) => o.emailAddress).toList()}');
-        _logDebug('  Shared: ${fileInfo.shared}');
-        
-        final isEducatorOwner = fileInfo.owners?.any((o) => o.emailAddress == educatorEmail) == true;
-        if (isEducatorOwner) {
-          _logDebug('✅✅✅ VERIFICATION SUCCESS: Educator is now owner!');
-        } else {
-          _logDebug('❌❌❌ VERIFICATION FAILED: Educator not found in owners!');
-        }
-      } catch (e) {
-        _logDebug('Could not verify ownership transfer: $e');
-      }
-      
-      // STEP 2: Ensure service account retains writer access
-      try {
-        if (_credentials?.email != null) {
-          final servicePermission = drive.Permission(
-            type: 'user',
-            role: 'writer',
-            emailAddress: _credentials!.email,
-          );
-          
-          await _driveApi!.permissions.create(
-            servicePermission,
-            spreadsheetId,
-            sendNotificationEmail: false,
-          );
-          
-          _logDebug('✅ Service account retained writer access');
-        }
-      } catch (serviceError) {
-        _logDebug('⚠️ Could not retain service account access: $serviceError');
-      }
+      return success;
       
     } catch (e) {
-      _logDebug('❌❌❌ === OWNERSHIP TRANSFER FAILED ===');
-      _logDebug('❌❌❌ Error type: ${e.runtimeType}');
-      _logDebug('❌❌❌ Error details: $e');
-      _logDebug('❌❌❌ Full error string: ${e.toString()}');
-      
-      // Analyze the error
-      final errorStr = e.toString();
-      if (errorStr.contains('403')) {
-        _logDebug('🔒 DIAGNOSIS: 403 Forbidden - Service account lacks ownership transfer permission');
-        _logDebug('🔒 SOLUTION: Service account needs domain-wide delegation or different approach');
-      } else if (errorStr.contains('400')) {
-        _logDebug('⚠️ DIAGNOSIS: 400 Bad Request - Invalid API call parameters');
-      } else if (errorStr.contains('404')) {
-        _logDebug('📂 DIAGNOSIS: 404 Not Found - Spreadsheet or user not found');
-      }
-      
-      _logDebug('⚠️ Falling back to sharing (file will be in Shared with me)');
-      
-      // Fallback: Just share if ownership transfer fails
-      try {
-        final writerPermission = drive.Permission(
-          type: 'user',
-          role: 'writer',
-          emailAddress: educatorEmail,
-        );
-        
-        await _driveApi!.permissions.create(
-          writerPermission,
-          spreadsheetId,
-          sendNotificationEmail: true,
-          emailMessage: 'גיליון BPApp שותף איתך. הוא יופיע ב"שותף איתי".',
-        );
-        
-        _logDebug('📁 Shared spreadsheet as fallback');
-      } catch (shareError) {
-        _logDebug('❌ Could not share spreadsheet: $shareError');
-      }
+      _logDebug('❌ Error saving to educator spreadsheet: $e');
+      return false;
     }
   }
   
@@ -538,15 +512,221 @@ class ServiceAccountSheetsService extends ChangeNotifier {
     }
   }
   
-  /// Save record to specific spreadsheet
+  /// Save record to specific spreadsheet with intelligent insertion
   Future<bool> _saveRecordToSpreadsheet(String spreadsheetId, StudentRecord record) async {
-    if (_sheetsApi == null) return false;
+    if (_sheetsApi == null) {
+      _logDebug('❌ Sheets API is null - cannot save');
+      return false;
+    }
     
     try {
-      // Use append operation for simplicity in Phase 1
-      // TODO: Add matching/updating logic in future iterations
+      _logDebug('📝 Preparing to save record to spreadsheet: $spreadsheetId');
+      _logDebug('📋 Student: ${record.studentName}, Class: ${record.className}');
+      _logDebug('📊 Scores: Entry=${record.entry}, Stay=${record.staying}, Attitude=${record.attitude}');
+      
+      // First check if record already exists (4-field matching)
+      final existingRowNumber = await _findExistingRow(spreadsheetId, record);
+      
+      if (existingRowNumber != null) {
+        // Update existing record
+        _logDebug('📝 Updating existing record at row $existingRowNumber');
+        return await _updateRow(spreadsheetId, record, existingRowNumber);
+      } else {
+        // Find correct position for new record
+        _logDebug('🆕 Adding new record with intelligent sorting');
+        final insertPosition = await _findInsertPosition(spreadsheetId, record);
+        
+        if (insertPosition == -1) {
+          // Append to end
+          _logDebug('➕ Appending record to end of spreadsheet');
+          return await _appendToEnd(spreadsheetId, record);
+        } else {
+          // Insert at specific position
+          _logDebug('📍 Inserting record at position $insertPosition');
+          return await _insertAtPosition(spreadsheetId, record, insertPosition);
+        }
+      }
+      
+    } catch (e) {
+      _logDebug('❌ Error saving record: $e');
+      return false;
+    }
+  }
+  
+  /// Find existing row using 4-field matching
+  Future<int?> _findExistingRow(String spreadsheetId, StudentRecord record) async {
+    try {
+      final response = await _sheetsApi!.spreadsheets.values.get(
+        spreadsheetId,
+        'נתוני תלמידים!A2:D',
+      );
+      
+      if (response.values == null) return null;
+      
+      for (int i = 0; i < response.values!.length; i++) {
+        final row = response.values![i];
+        if (row.length >= 4 &&
+            row[0]?.toString() == record.date &&
+            row[1]?.toString() == record.studentName &&
+            row[2]?.toString() == record.className &&
+            int.tryParse(row[3]?.toString() ?? '') == record.classNumber) {
+          return i + 2; // +2 because we start from row 2
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      _logDebug('Error finding existing row: $e');
+      return null;
+    }
+  }
+  
+  /// Update existing row
+  Future<bool> _updateRow(String spreadsheetId, StudentRecord record, int rowNumber) async {
+    try {
+      final dataRow = record.withCalculatedScore().toSheetRow();
       final valueRange = sheets.ValueRange(
-        values: [record.withCalculatedScore().toSheetRow()],
+        values: [dataRow],
+      );
+      
+      await _sheetsApi!.spreadsheets.values.update(
+        valueRange,
+        spreadsheetId,
+        'נתוני תלמידים!A$rowNumber:L$rowNumber',
+        valueInputOption: 'RAW',
+      );
+      
+      _logDebug('✅ Updated row $rowNumber successfully');
+      return true;
+    } catch (e) {
+      _logDebug('❌ Error updating row: $e');
+      return false;
+    }
+  }
+  
+  /// Find the correct position to insert the record based on date and class number
+  Future<int> _findInsertPosition(String spreadsheetId, StudentRecord record) async {
+    try {
+      final response = await _sheetsApi!.spreadsheets.values.get(
+        spreadsheetId,
+        'נתוני תלמידים!A2:D',
+      );
+      
+      if (response.values == null || response.values!.isEmpty) {
+        return -1; // Empty sheet, append to end
+      }
+      
+      _logDebug('🔄 [SORT] Finding position for record: ${record.date} (class ${record.classNumber})');
+      
+      // Parse the new record's date
+      final newRecordDate = _parseDate(record.date);
+      _logDebug('🔄 [SORT] Parsed record date: $newRecordDate');
+      
+      for (int i = 0; i < response.values!.length; i++) {
+        final row = response.values![i];
+        if (row.isEmpty) continue;
+        
+        final existingDate = _parseDate(row[0]?.toString() ?? '');
+        final existingClassNum = int.tryParse(row[3]?.toString() ?? '') ?? 0;
+        
+        _logDebug('🔄 [SORT] Comparing with row ${i + 2}: ${row[0]} (class $existingClassNum)');
+        
+        // First sort by date (newer dates first)
+        if (newRecordDate != null && existingDate != null) {
+          if (newRecordDate.isAfter(existingDate)) {
+            _logDebug('✅ [SORT] Found position by date: inserting at row ${i + 2}');
+            return i + 2; // Insert before this row
+          } else if (newRecordDate.isEqual(existingDate)) {
+            // Same date, sort by class number (ascending)
+            if (record.classNumber < existingClassNum) {
+              _logDebug('✅ [SORT] Found position by class number: inserting at row ${i + 2}');
+              return i + 2; // Insert before this row
+            }
+          }
+        }
+      }
+      
+      return -1; // Append to end
+    } catch (e) {
+      _logDebug('Error finding insert position: $e');
+      return -1;
+    }
+  }
+  
+  /// Parse date string to DateTime for comparison
+  DateTime? _parseDate(String dateStr) {
+    try {
+      // Expected format: DD/MM/YYYY
+      final parts = dateStr.split('/');
+      if (parts.length == 3) {
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+    } catch (e) {
+      _logDebug('Error parsing date "$dateStr": $e');
+    }
+    return null;
+  }
+  
+  /// Insert record at specific position
+  Future<bool> _insertAtPosition(String spreadsheetId, StudentRecord record, int rowNumber) async {
+    try {
+      // First, get the sheet ID
+      final spreadsheet = await _sheetsApi!.spreadsheets.get(spreadsheetId);
+      final sheetId = spreadsheet.sheets?.first.properties?.sheetId ?? 0;
+      _logDebug('📋 Using sheet ID: $sheetId for insertion');
+      
+      // Insert a blank row at the position
+      final insertRequest = sheets.BatchUpdateSpreadsheetRequest(
+        requests: [
+          sheets.Request(
+            insertDimension: sheets.InsertDimensionRequest(
+              range: sheets.DimensionRange(
+                sheetId: sheetId, // Use actual sheet ID
+                dimension: 'ROWS',
+                startIndex: rowNumber - 1, // 0-indexed
+                endIndex: rowNumber,
+              ),
+              inheritFromBefore: false,
+            ),
+          ),
+        ],
+      );
+      
+      await _sheetsApi!.spreadsheets.batchUpdate(
+        insertRequest,
+        spreadsheetId,
+      );
+      
+      // Then update the new row with data
+      final dataRow = record.withCalculatedScore().toSheetRow();
+      final valueRange = sheets.ValueRange(
+        values: [dataRow],
+      );
+      
+      await _sheetsApi!.spreadsheets.values.update(
+        valueRange,
+        spreadsheetId,
+        'נתוני תלמידים!A$rowNumber:L$rowNumber',
+        valueInputOption: 'RAW',
+      );
+      
+      _logDebug('✅ Inserted record at position $rowNumber');
+      return true;
+    } catch (e) {
+      _logDebug('❌ Error inserting at position: $e');
+      return false;
+    }
+  }
+  
+  /// Append record to end of spreadsheet
+  Future<bool> _appendToEnd(String spreadsheetId, StudentRecord record) async {
+    try {
+      final dataRow = record.withCalculatedScore().toSheetRow();
+      final valueRange = sheets.ValueRange(
+        values: [dataRow],
       );
       
       await _sheetsApi!.spreadsheets.values.append(
@@ -557,10 +737,10 @@ class ServiceAccountSheetsService extends ChangeNotifier {
         insertDataOption: 'INSERT_ROWS',
       );
       
+      _logDebug('✅ Appended record to end of spreadsheet');
       return true;
-      
     } catch (e) {
-      _logDebug('Error saving record to spreadsheet: $e');
+      _logDebug('❌ Error appending to end: $e');
       return false;
     }
   }

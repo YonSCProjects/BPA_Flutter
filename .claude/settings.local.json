@@ -24,7 +24,9 @@
       "Bash(where flutter)",
       "Bash(\"C:\\flutter\\flutter\\bin\\cache\\dart-sdk\\../../artifacts/dart-sdk/../tools/flutter_tools.snapshot\" install --device-id R5CW7197WXT \"C:\\BPA_Sup\\BPA_Fllutter\\build\\app\\outputs\\flutter-apk\\app-release.apk\")",
       "WebFetch(domain:console.cloud.google.com)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(\"C:\\flutter\\flutter\\bin\\cache\\artifacts\\engine\\android-sdk\\platform-tools\\adb.exe\" uninstall com.bpa.student)",
+      "Bash(dir buildappoutputsflutter-apk*.apk)"
     ],
     "deny": [],
     "ask": [],

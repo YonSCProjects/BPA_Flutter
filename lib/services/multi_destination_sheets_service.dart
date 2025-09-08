@@ -104,31 +104,38 @@ class MultiDestinationSheetsService extends ChangeNotifier {
   /// Save record to educator's spreadsheet
   Future<bool> _saveToEducatorSpreadsheet(StudentRecord record, String educatorEmail) async {
     try {
-      debugPrint('🔄 [MULTI-SAVE] Initiating educator spreadsheet save');
+      print('🔄🔄🔄 [MULTI-SAVE] === EDUCATOR SAVE STARTING ===');
+      print('🔄 Educator email: $educatorEmail');
+      print('🔄 Service account initialized: ${_serviceAccountService.isInitialized}');
       
       // Find or create educator's spreadsheet
+      print('🔄 Finding educator spreadsheet...');
       final spreadsheetId = await _findOrCreateEducatorSpreadsheet(educatorEmail);
       
       if (spreadsheetId == null) {
-        debugPrint('❌ [MULTI-SAVE] Could not find or create educator spreadsheet');
+        print('❌ Could not find educator spreadsheet');
+        print('   Educator must sign in first to create their BPApp');
         return false;
       }
       
-      debugPrint('📝 [MULTI-SAVE] Saving record to educator spreadsheet: $spreadsheetId');
+      print('✅ Found educator spreadsheet: $spreadsheetId');
+      print('📝 Attempting to save record...');
       
       // Save the record to the educator's spreadsheet
       final success = await _saveToSpreadsheet(record, spreadsheetId, educatorEmail);
       
       if (success) {
-        debugPrint('✅ [MULTI-SAVE] Record saved to educator spreadsheet');
+        print('✅✅✅ Record saved to educator spreadsheet!');
       } else {
-        debugPrint('❌ [MULTI-SAVE] Failed to save to educator spreadsheet');
+        print('❌❌❌ Failed to save to educator spreadsheet');
       }
       
+      print('🔄 === EDUCATOR SAVE COMPLETE ===\n');
       return success;
       
     } catch (e) {
-      debugPrint('❌ [MULTI-SAVE] Error in educator save: $e');
+      print('❌❌❌ Error in educator save');
+      print('   Error: $e');
       return false;
     }
   }
@@ -243,20 +250,14 @@ class MultiDestinationSheetsService extends ChangeNotifier {
         return spreadsheetId;
       }
       
-      // No existing BPApp found - create new one
-      debugPrint('🆕 [MULTI-SAVE] No existing BPApp found for educator');
-      debugPrint('🆕 [MULTI-SAVE] Creating new BPApp in educator\'s My Drive...');
+      // No existing BPApp found - educator needs to sign in first
+      debugPrint('⚠️ [MULTI-SAVE] No existing BPApp found for educator: $educatorEmail');
+      debugPrint('ℹ️ [MULTI-SAVE] Educator must sign in to the app to create their BPApp');
+      debugPrint('ℹ️ [MULTI-SAVE] The BPApp will be automatically created and shared with service account');
+      debugPrint('ℹ️ [MULTI-SAVE] After educator signs in once, teacher entries will be saved to their BPApp');
       
-      final newSpreadsheetId = await _createEducatorSpreadsheet(educatorEmail);
-      
-      if (newSpreadsheetId != null) {
-        _educatorSpreadsheetIds[educatorEmail] = newSpreadsheetId;
-        debugPrint('✅ [MULTI-SAVE] Created new BPApp for educator: $newSpreadsheetId');
-        return newSpreadsheetId;
-      } else {
-        debugPrint('❌ [MULTI-SAVE] Failed to create new BPApp for educator');
-        return null;
-      }
+      // Do NOT create spreadsheet - educator must do it themselves
+      return null;
       
     } catch (e) {
       debugPrint('❌ [MULTI-SAVE] Error finding/creating educator spreadsheet: $e');
@@ -550,7 +551,11 @@ class MultiDestinationSheetsService extends ChangeNotifier {
       // Use service account if available for educator spreadsheets
       if (_serviceAccountService.isInitialized && AppConfig.useServiceAccount) {
         debugPrint('🔐 [MULTI-SAVE] Using SERVICE ACCOUNT to save to educator spreadsheet');
-        return await _serviceAccountService.saveRecordToEducatorSpreadsheet(
+        debugPrint('🔐 [MULTI-SAVE] Spreadsheet ID: $spreadsheetId');
+        debugPrint('🔐 [MULTI-SAVE] Educator Email: $educatorEmail');
+        
+        // Use the new method that takes spreadsheet ID directly
+        return await _serviceAccountService.saveRecordToSpreadsheetById(
           record,
           spreadsheetId,
           educatorEmail,
