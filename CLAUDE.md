@@ -7,12 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 Hebrew-language cross-platform mobile application for teachers to track student performance and attendance through 11 structured input fields with automatic Google Sheets integration. Each user maintains their own private "BPApp" spreadsheet with real-time score calculation and smart record matching.
 
-## Current Status (September 2024)
+## Current Status (January 2025)
 ✅ **ENTERPRISE FEATURES ACTIVE** - Firebase integration with service account and dynamic dropdowns
 ✅ **Phase 1 Complete**: Service account integration for centralized spreadsheet management
 ✅ **Phase 2 Complete**: Firebase backend with Firestore collections for educators/students
 ✅ **Phase 3 Complete**: Dynamic dropdowns powered by Firebase data
+✅ **WEB ADMIN PORTAL DEPLOYED**: Full CRUD interface live at https://bpapp-firebase-485c1.web.app
+✅ **FIREBASE SECURITY RULES**: Updated to allow public read for Flutter app, authenticated write for admin
 📋 **See `CURRENT_INFRASTRUCTURE.md`** for complete existing configuration details
+📘 **See `WEB_ADMIN_GUIDE.md`** for admin portal documentation and deployment instructions
 🚀 **Current branch**: `service-account-final` with all enterprise features
 
 ## Critical Project Information
@@ -64,24 +67,30 @@ flutter build apk --release
 
 ## Project Structure
 ```
-lib/
-├── main.dart                    # App entry point with Firebase initialization
-├── config/
-│   └── app_config.dart          # Enterprise feature flags configuration
-├── services/                    # Core services
-│   ├── google_auth_service.dart # OAuth authentication
-│   ├── google_sheets_service.dart # Sheets integration
-│   ├── firebase_data_service.dart # Firebase Firestore integration
-│   ├── local_storage_service.dart # SQLite offline storage
-│   └── multi_destination_sheets_service.dart # Multi-save logic
-├── presentation/
-│   ├── pages/                   # Main screens
-│   ├── widgets/                 # Hebrew UI components + Firebase dropdown
-│   └── providers/               # State management
-├── core/
-│   ├── educator_mappings.dart   # Class-to-educator mapping configuration
-│   └── theme/                   # Hebrew RTL theme
-└── data/                        # Models and constants
+BPA_Flutter/
+├── lib/                         # Flutter mobile app
+│   ├── main.dart                # App entry point with Firebase initialization
+│   ├── config/
+│   │   └── app_config.dart      # Enterprise feature flags configuration
+│   ├── services/                # Core services
+│   │   ├── google_auth_service.dart # OAuth authentication
+│   │   ├── google_sheets_service.dart # Sheets integration
+│   │   ├── firebase_data_service.dart # Firebase Firestore integration
+│   │   ├── local_storage_service.dart # SQLite offline storage
+│   │   └── multi_destination_sheets_service.dart # Multi-save logic
+│   ├── presentation/
+│   │   ├── pages/               # Main screens
+│   │   ├── widgets/             # Hebrew UI components + Firebase dropdown
+│   │   └── providers/           # State management
+│   ├── core/
+│   │   ├── educator_mappings.dart # Class-to-educator mapping configuration
+│   │   └── theme/               # Hebrew RTL theme
+│   └── data/                    # Models and constants
+└── web-admin/                   # Next.js admin portal
+    ├── app/                     # Pages and routes
+    ├── components/              # Reusable components
+    ├── contexts/                # React contexts
+    └── lib/                     # Firebase config
 ```
 
 ## Enterprise Features Status
@@ -90,7 +99,8 @@ All enterprise features are now implemented and active:
 2. ✅ **Firebase Backend** - Student/educator data with dropdown menus  
 3. ✅ **Dynamic Dropdowns** - Firebase-powered student/educator selection
 4. ✅ **Multi-destination Sheets** - Automatic saving to educator sheets
-5. 🧪 **Testing Phase** - Verifying multi-destination functionality
+5. ✅ **Web Admin Portal** - Full CRUD interface for Firebase collections
+6. ✅ **Bulk Import System** - CSV upload for all collections
 
 ## Important Reminders
 - ✅ Authentication and APIs are WORKING - don't break them
