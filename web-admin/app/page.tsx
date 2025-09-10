@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase-config';
+import MigrationConfig from '@/lib/migration-config';
 import { Users, GraduationCap, UserCheck, Activity, TrendingUp, Database } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -48,8 +49,18 @@ export default function HomePage() {
       console.log('Users count:', usersCount);
 
       // Fetch educators count
-      const educatorsSnapshot = await getDocs(collection(db, 'educators'));
-      const educatorsCount = educatorsSnapshot.size;
+      let educatorsCount = 0;
+      if (MigrationConfig.useLegacyEducatorsCollection) {
+        const educatorsSnapshot = await getDocs(collection(db, 'educators'));
+        educatorsCount = educatorsSnapshot.size;
+      } else {
+        const educatorsQuery = query(
+          collection(db, 'users'),
+          where('role', '==', 'educator')
+        );
+        const educatorsSnapshot = await getDocs(educatorsQuery);
+        educatorsCount = educatorsSnapshot.size;
+      }
       console.log('Educators count:', educatorsCount);
 
       // Fetch students count and classes

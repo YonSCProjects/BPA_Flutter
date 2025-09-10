@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase-config';
+import MigrationConfig from '@/lib/migration-config';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import { Upload, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
@@ -112,11 +113,14 @@ export default function ImportPage() {
           case 'educators':
             errors = validateEducatorData(row);
             if (errors.length === 0) {
+              const isUsersCollection = !MigrationConfig.useLegacyEducatorsCollection;
               docData = {
                 name: row.name.trim(),
                 email: row.email.trim(),
                 classes: row.classes.split(',').map((c: string) => c.trim()).filter((c: string) => c),
                 spreadsheetId: row.spreadsheetId?.trim() || null,
+                active: row.active !== undefined ? row.active : true,
+                ...(isUsersCollection && { role: 'educator' }),
                 createdAt: new Date(),
                 updatedAt: new Date()
               };
@@ -141,7 +145,11 @@ export default function ImportPage() {
           result.failed++;
           result.errors.push(`Row ${i + 1}: ${errors.join(', ')}`);
         } else {
-          const docRef = doc(collection(db, selectedCollection));
+          // For educators, use the configured collection
+          const targetCollection = selectedCollection === 'educators' 
+            ? MigrationConfig.getEducatorsCollection() 
+            : selectedCollection;
+          const docRef = doc(collection(db, targetCollection));
           batch.set(docRef, docData);
           result.success++;
         }

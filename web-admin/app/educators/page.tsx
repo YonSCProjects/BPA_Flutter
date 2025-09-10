@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase-config';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/components/DashboardLayout';
+import MigrationConfig from '@/lib/migration-config';
 
 interface Educator {
   id: string;
@@ -39,7 +40,20 @@ export default function EducatorsPage() {
 
   const fetchEducators = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'educators'));
+      let querySnapshot;
+      
+      if (MigrationConfig.useLegacyEducatorsCollection) {
+        // Legacy: Use educators collection
+        querySnapshot = await getDocs(collection(db, 'educators'));
+      } else {
+        // New: Use users collection with role filter
+        const educatorsQuery = query(
+          collection(db, 'users'),
+          where('role', '==', 'educator')
+        );
+        querySnapshot = await getDocs(educatorsQuery);
+      }
+      
       const educatorsData: Educator[] = [];
       querySnapshot.forEach((doc) => {
         educatorsData.push({ id: doc.id, ...doc.data() } as Educator);
@@ -65,11 +79,17 @@ export default function EducatorsPage() {
       };
 
       if (editingEducator) {
-        await updateDoc(doc(db, 'educators', editingEducator.id), educatorData);
+        const collectionName = MigrationConfig.getEducatorsCollection();
+        await updateDoc(doc(db, collectionName, editingEducator.id), {
+          ...educatorData,
+          ...(collectionName === 'users' && { role: 'educator' })
+        });
         toast.success('Educator updated successfully');
       } else {
-        await addDoc(collection(db, 'educators'), {
+        const collectionName = MigrationConfig.getEducatorsCollection();
+        await addDoc(collection(db, collectionName), {
           ...educatorData,
+          ...(collectionName === 'users' && { role: 'educator' }),
           createdAt: new Date()
         });
         toast.success('Educator added successfully');
@@ -86,7 +106,8 @@ export default function EducatorsPage() {
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this educator?')) {
       try {
-        await deleteDoc(doc(db, 'educators', id));
+        const collectionName = MigrationConfig.getEducatorsCollection();
+        await deleteDoc(doc(db, collectionName, id));
         toast.success('Educator deleted successfully');
         fetchEducators();
       } catch (error) {

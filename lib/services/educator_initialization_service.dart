@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'google_auth_service.dart';
+import '../config/app_config.dart';
 
 /// Service to handle educator self-initialization
 /// 
@@ -29,36 +30,38 @@ class EducatorInitializationService {
     }
     
     try {
-      // First check educators collection
-      final educatorQuery = await _firestore
-          .collection(_educatorsCollection)
-          .where('email', isEqualTo: userEmail)
-          .limit(1)
-          .get();
-      
-      if (educatorQuery.docs.isNotEmpty) {
-        final educatorDoc = educatorQuery.docs.first;
-        final currentSpreadsheetId = educatorDoc.data()['spreadsheetId'];
+      if (AppConfig.useLegacyEducatorsCollection) {
+        // Legacy: Check educators collection
+        final educatorQuery = await _firestore
+            .collection(_educatorsCollection)
+            .where('email', isEqualTo: userEmail)
+            .limit(1)
+            .get();
         
-        // Only update if spreadsheetId is missing or empty
-        if (currentSpreadsheetId == null || currentSpreadsheetId.toString().isEmpty) {
-          await _updateEducatorSpreadsheet(
-            docId: educatorDoc.id,
-            spreadsheetId: spreadsheetId,
-            collection: _educatorsCollection,
-          );
+        if (educatorQuery.docs.isNotEmpty) {
+          final educatorDoc = educatorQuery.docs.first;
+          final currentSpreadsheetId = educatorDoc.data()['spreadsheetId'];
           
-          // Also share the spreadsheet with service account
-          await _shareWithServiceAccount(spreadsheetId);
-          
-          debugPrint('[EDUCATOR_INIT] ✅ Updated educator spreadsheet ID in educators collection');
-          return true;
-        } else {
-          debugPrint('[EDUCATOR_INIT] Educator already has spreadsheet ID: $currentSpreadsheetId');
+          // Only update if spreadsheetId is missing or empty
+          if (currentSpreadsheetId == null || currentSpreadsheetId.toString().isEmpty) {
+            await _updateEducatorSpreadsheet(
+              docId: educatorDoc.id,
+              spreadsheetId: spreadsheetId,
+              collection: _educatorsCollection,
+            );
+            
+            // Also share the spreadsheet with service account
+            await _shareWithServiceAccount(spreadsheetId);
+            
+            debugPrint('[EDUCATOR_INIT] ✅ Updated educator spreadsheet ID in educators collection');
+            return true;
+          } else {
+            debugPrint('[EDUCATOR_INIT] Educator already has spreadsheet ID: $currentSpreadsheetId');
+          }
         }
       }
       
-      // Also check users collection (for future migration)
+      // Check users collection (primary when flag is off, secondary when flag is on)
       final userQuery = await _firestore
           .collection(_usersCollection)
           .where('email', isEqualTo: userEmail)
@@ -120,21 +123,23 @@ class EducatorInitializationService {
   /// Get educator's spreadsheet ID if they have one
   Future<String?> getEducatorSpreadsheetId(String userEmail) async {
     try {
-      // Check educators collection first
-      final educatorQuery = await _firestore
-          .collection(_educatorsCollection)
-          .where('email', isEqualTo: userEmail)
-          .limit(1)
-          .get();
-      
-      if (educatorQuery.docs.isNotEmpty) {
-        final spreadsheetId = educatorQuery.docs.first.data()['spreadsheetId'];
-        if (spreadsheetId != null && spreadsheetId.toString().isNotEmpty) {
-          return spreadsheetId.toString();
+      if (AppConfig.useLegacyEducatorsCollection) {
+        // Legacy: Check educators collection first
+        final educatorQuery = await _firestore
+            .collection(_educatorsCollection)
+            .where('email', isEqualTo: userEmail)
+            .limit(1)
+            .get();
+        
+        if (educatorQuery.docs.isNotEmpty) {
+          final spreadsheetId = educatorQuery.docs.first.data()['spreadsheetId'];
+          if (spreadsheetId != null && spreadsheetId.toString().isNotEmpty) {
+            return spreadsheetId.toString();
+          }
         }
       }
       
-      // Check users collection as fallback
+      // Check users collection (primary when flag is off, fallback when flag is on)
       final userQuery = await _firestore
           .collection(_usersCollection)
           .where('email', isEqualTo: userEmail)

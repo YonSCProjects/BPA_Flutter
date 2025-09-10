@@ -36,6 +36,13 @@ class AppConfig {
   /// Firebase project configuration (DO NOT CHANGE)
   static const String firebaseProjectId = 'bpapp-firebase-485c1';
   
+  // ===== DATABASE MIGRATION FLAGS =====
+  
+  /// Controls which collection to use for educators data
+  /// When true: Uses legacy 'educators' collection (current state)
+  /// When false: Uses 'users' collection with role='educator' filter (target state)
+  static const bool useLegacyEducatorsCollection = true;
+  
   // ===== ROLLBACK SAFETY =====
   
   /// Emergency disable for all enterprise features

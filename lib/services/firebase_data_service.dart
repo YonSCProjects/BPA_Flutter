@@ -92,16 +92,28 @@ class FirebaseDataService extends ChangeNotifier {
     if (_firestore == null) return;
     
     try {
-      final snapshot = await _firestore!
-          .collection(_educatorsCollection)
-          .where('active', isEqualTo: true)
-          .get();
+      QuerySnapshot snapshot;
+      
+      if (AppConfig.useLegacyEducatorsCollection) {
+        // Legacy: Use educators collection
+        snapshot = await _firestore!
+            .collection(_educatorsCollection)
+            .where('active', isEqualTo: true)
+            .get();
+      } else {
+        // New: Use users collection with role filter
+        snapshot = await _firestore!
+            .collection('users')
+            .where('role', isEqualTo: 'educator')
+            .where('active', isEqualTo: true)
+            .get();
+      }
       
       _cachedEducators = snapshot.docs
           .map((doc) => EducatorData.fromFirestore(doc))
           .toList();
       
-      _logDebug('Loaded ${_cachedEducators.length} educators');
+      _logDebug('Loaded ${_cachedEducators.length} educators from ${AppConfig.useLegacyEducatorsCollection ? "educators" : "users"} collection');
       
     } catch (e) {
       _logDebug('Error loading educators: $e');
@@ -137,19 +149,38 @@ class FirebaseDataService extends ChangeNotifier {
       return Stream.value(_cachedEducators);
     }
     
-    return _firestore!
-        .collection(_educatorsCollection)
-        .where('active', isEqualTo: true)
-        .snapshots()
-        .map((snapshot) {
-      final educators = snapshot.docs
-          .map((doc) => EducatorData.fromFirestore(doc))
-          .toList();
-      
-      // Update cache
-      _cachedEducators = educators;
-      return educators;
-    });
+    if (AppConfig.useLegacyEducatorsCollection) {
+      // Legacy: Use educators collection
+      return _firestore!
+          .collection(_educatorsCollection)
+          .where('active', isEqualTo: true)
+          .snapshots()
+          .map((snapshot) {
+        final educators = snapshot.docs
+            .map((doc) => EducatorData.fromFirestore(doc))
+            .toList();
+        
+        // Update cache
+        _cachedEducators = educators;
+        return educators;
+      });
+    } else {
+      // New: Use users collection with role filter
+      return _firestore!
+          .collection('users')
+          .where('role', isEqualTo: 'educator')
+          .where('active', isEqualTo: true)
+          .snapshots()
+          .map((snapshot) {
+        final educators = snapshot.docs
+            .map((doc) => EducatorData.fromFirestore(doc))
+            .toList();
+        
+        // Update cache
+        _cachedEducators = educators;
+        return educators;
+      });
+    }
   }
   
   /// Get students stream for specific educator
