@@ -6,6 +6,7 @@ import '../data/models/student_record.dart';
 import '../data/models/autocomplete_data.dart';
 import 'google_auth_service.dart';
 import 'local_storage_service.dart';
+import 'educator_initialization_service.dart';
 
 class GoogleSheetsService extends ChangeNotifier {
   static const String spreadsheetName = 'BPApp';
@@ -28,6 +29,7 @@ class GoogleSheetsService extends ChangeNotifier {
 
   final GoogleAuthService _authService;
   final LocalStorageService _localStorageService = LocalStorageService();
+  late final EducatorInitializationService _educatorInitService;
   
   /// Access to the authentication service for multi-destination saving
   GoogleAuthService get authService => _authService;
@@ -45,6 +47,7 @@ class GoogleSheetsService extends ChangeNotifier {
   static const bool _offlineFirstEnabled = true;
 
   GoogleSheetsService(this._authService) {
+    _educatorInitService = EducatorInitializationService(_authService);
     _authService.addListener(_onAuthStateChanged);
   }
 
@@ -133,6 +136,14 @@ class GoogleSheetsService extends ChangeNotifier {
     // Ensure existing spreadsheet has proper protection
     if (_spreadsheetId != null) {
       await _fixExistingProtection();
+    }
+    
+    // Check if this user is an educator and auto-initialize their spreadsheet ID
+    if (_spreadsheetId != null && _authService.currentUser?.email != null) {
+      await _educatorInitService.checkAndInitializeEducator(
+        userEmail: _authService.currentUser!.email!,
+        spreadsheetId: _spreadsheetId!,
+      );
     }
     
     debugPrint('✅ [INIT] Spreadsheet setup complete: $_spreadsheetId');
