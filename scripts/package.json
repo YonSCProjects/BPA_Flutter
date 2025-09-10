@@ -1,0 +1,13 @@
+{
+  "name": "bpapp-migration-scripts",
+  "version": "1.0.0",
+  "description": "Migration scripts for BPApp database",
+  "scripts": {
+    "backup": "node backup_educators_collection.js",
+    "migrate:dry": "node migrate_educators_to_users.js --dry-run --verbose",
+    "migrate": "node migrate_educators_to_users.js --verbose"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.1"
+  }
+}

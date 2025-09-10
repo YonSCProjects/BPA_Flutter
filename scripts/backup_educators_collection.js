@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Initialize Firebase Admin
-const serviceAccount = require('../firebase-service-account.json');
+const serviceAccount = require('../assets/service_account.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),

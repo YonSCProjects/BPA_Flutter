@@ -10,7 +10,7 @@ export const MigrationConfig = {
    * When true: Uses legacy 'educators' collection (current state)
    * When false: Uses 'users' collection with role='educator' filter (target state)
    */
-  useLegacyEducatorsCollection: true,
+  useLegacyEducatorsCollection: false,
   
   /**
    * Helper to get the collection name based on the flag

@@ -41,7 +41,7 @@ class AppConfig {
   /// Controls which collection to use for educators data
   /// When true: Uses legacy 'educators' collection (current state)
   /// When false: Uses 'users' collection with role='educator' filter (target state)
-  static const bool useLegacyEducatorsCollection = true;
+  static const bool useLegacyEducatorsCollection = false;
   
   // ===== ROLLBACK SAFETY =====
   

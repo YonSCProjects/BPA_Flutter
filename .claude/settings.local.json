@@ -13,7 +13,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(node:*)",
+      "Bash(flutter build:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": [],

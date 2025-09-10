@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "backupDate": "2025-09-10T03:01:49.324Z",
+    "collection": "educators",
+    "documentCount": 2,
+    "backupVersion": "1.0"
+  },
+  "documents": [
+    {
+      "id": "1lqcdUWowxXtTFPMG20M",
+      "data": {
+        "name": "נטלי",
+        "active": true,
+        "createdAt": {
+          "_seconds": 1757173488,
+          "_nanoseconds": 999000000
+        },
+        "email": "sharan.lobl@gmail.com"
+      },
+      "createTime": "2025-09-06T15:42:59.922Z",
+      "updateTime": "2025-09-07T21:14:58.403Z"
+    },
+    {
+      "id": "Q76s4Wjc6fCH5HJd0ysR",
+      "data": {
+        "name": "תאיר",
+        "active": true,
+        "createdAt": {
+          "_seconds": 1757168283,
+          "_nanoseconds": 852000000
+        },
+        "email": "yonatanlevel@gmail.com"
+      },
+      "createTime": "2025-09-06T14:17:06.975Z",
+      "updateTime": "2025-09-07T21:15:19.684Z"
+    }
+  ]
+}

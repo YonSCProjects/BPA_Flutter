@@ -1,0 +1,142 @@
+{
+  "timestamp": "2025-09-10T03-02-25-210Z",
+  "educators": [
+    {
+      "id": "1lqcdUWowxXtTFPMG20M",
+      "data": {
+        "name": "נטלי",
+        "active": true,
+        "createdAt": {
+          "_seconds": 1757173488,
+          "_nanoseconds": 999000000
+        },
+        "email": "sharan.lobl@gmail.com"
+      }
+    },
+    {
+      "id": "Q76s4Wjc6fCH5HJd0ysR",
+      "data": {
+        "name": "תאיר",
+        "active": true,
+        "createdAt": {
+          "_seconds": 1757168283,
+          "_nanoseconds": 852000000
+        },
+        "email": "yonatanlevel@gmail.com"
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "admin_001",
+      "data": {
+        "name": "יוני לב אל",
+        "role": "admin",
+        "createdAt": {
+          "_seconds": 1757167250,
+          "_nanoseconds": 193000000
+        },
+        "lastLogin": {
+          "_seconds": 1757167267,
+          "_nanoseconds": 463000000
+        },
+        "email": "yon.level@Gmail.com"
+      }
+    },
+    {
+      "id": "educator_001",
+      "data": {
+        "name": "תאיר",
+        "role": "educator",
+        "createdAt": {
+          "_seconds": 1757167412,
+          "_nanoseconds": 115000000
+        },
+        "lastLogin": {
+          "_seconds": 1757167428,
+          "_nanoseconds": 998000000
+        },
+        "email": "yonatanlevel@gmail.com"
+      }
+    },
+    {
+      "id": "educator_002",
+      "data": {
+        "name": "נטלי",
+        "role": "educator",
+        "createdAt": {
+          "_seconds": 1757173291,
+          "_nanoseconds": 823000000
+        },
+        "lastLogin": {
+          "_seconds": 1757173306,
+          "_nanoseconds": 944000000
+        },
+        "email": "sharan.lobl@gmail.com"
+      }
+    },
+    {
+      "id": "teacher_001",
+      "data": {
+        "name": "יוני לב אל",
+        "role": "teacher",
+        "createdAt": {
+          "_seconds": 1757167838,
+          "_nanoseconds": 457000000
+        },
+        "lastLogin": {
+          "_seconds": 1757167874,
+          "_nanoseconds": 392000000
+        },
+        "email": "yon.level@gmail.com"
+      }
+    }
+  ],
+  "students": [
+    {
+      "id": "0SWxYTTYWRvBa6kDsDko",
+      "data": {
+        "name": "ליאם סולומון",
+        "educatorId": "Q76s4Wjc6fCH5HJd0ysR ",
+        "educatorName": "תאיר",
+        "grade": "ט",
+        "notes": "",
+        "active": true,
+        "createAt": {
+          "_seconds": 1757169077,
+          "_nanoseconds": 681000000
+        }
+      }
+    },
+    {
+      "id": "lILeoCVlIJaqxiIkzlBE",
+      "data": {
+        "name": "ליאם דהן",
+        "educatorID": "Q76s4Wjc6fCH5HJd0ysR ",
+        "educatorName": "תאיר",
+        "grade": "ט",
+        "notes": "",
+        "active": true,
+        "createdAt": {
+          "_seconds": 1757168880,
+          "_nanoseconds": 95000000
+        }
+      }
+    },
+    {
+      "id": "oKIUmrSVHKOK02DVyzO6",
+      "data": {
+        "name": "אברהם איברגימוב",
+        "educatorId": "1lqcdUWowxXtTFPMG20M",
+        "educatorName": "נטלי",
+        "grade": "י",
+        "notes": "",
+        "active": true,
+        "createdAt": {
+          "_seconds": 1757173638,
+          "_nanoseconds": 715000000
+        }
+      }
+    }
+  ]
+}
