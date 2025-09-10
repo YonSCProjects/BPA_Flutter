@@ -27,15 +27,17 @@ service cloud.firestore {
     
     // Users collection - user profiles
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      // Allow public read for Flutter app dropdowns (educators with role='educator')
+      allow read: if true;
       allow create: if isAuthenticated() && isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
     
-    // Educators collection - class/educator information
+    // Educators collection - class/educator information (legacy, being phased out)
     match /educators/{educatorId} {
-      allow read: if isAuthenticated();
+      // Allow public read for Flutter app dropdowns
+      allow read: if true;
       allow create: if isAdmin();
       allow update: if isAdmin() || (isEducator() && resource.data.email == request.auth.token.email);
       allow delete: if isAdmin();
@@ -43,7 +45,8 @@ service cloud.firestore {
     
     // Students collection - student records
     match /students/{studentId} {
-      allow read: if isAuthenticated();
+      // Allow public read for Flutter app dropdowns
+      allow read: if true;
       allow create: if isAdmin() || isEducator();
       allow update: if isAdmin() || isEducator();
       allow delete: if isAdmin();

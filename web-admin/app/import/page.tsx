@@ -56,6 +56,7 @@ export default function ImportPage() {
     const errors = [];
     if (!row.name || row.name.trim() === '') errors.push('Name is required');
     if (!row.class || row.class.trim() === '') errors.push('Class is required');
+    // educatorId is optional
     return errors;
   };
 
@@ -73,6 +74,11 @@ export default function ImportPage() {
     if (!row.email || row.email.trim() === '') errors.push('Email is required');
     if (row.email && !row.email.includes('@')) errors.push('Invalid email format');
     if (!row.role || row.role.trim() === '') errors.push('Role is required');
+    // Validate role values
+    if (row.role && !['admin', 'educator', 'teacher'].includes(row.role.trim().toLowerCase())) {
+      errors.push('Role must be admin, educator, or teacher');
+    }
+    // spreadsheetId and classes are optional
     return errors;
   };
 
@@ -104,6 +110,7 @@ export default function ImportPage() {
               docData = {
                 name: row.name.trim(),
                 class: row.class.trim(),
+                educatorId: row.educatorId?.trim() || null,
                 createdAt: new Date(),
                 updatedAt: new Date()
               };
@@ -134,6 +141,8 @@ export default function ImportPage() {
                 email: row.email.trim(),
                 role: row.role.trim(),
                 name: row.name?.trim() || '',
+                spreadsheetId: row.spreadsheetId?.trim() || null,
+                classes: row.classes ? row.classes.split(',').map((c: string) => c.trim()).filter((c: string) => c) : [],
                 createdAt: new Date(),
                 updatedAt: new Date()
               };
@@ -179,11 +188,11 @@ export default function ImportPage() {
   const getTemplateHeaders = () => {
     switch (selectedCollection) {
       case 'students':
-        return ['name', 'class'];
+        return ['name', 'class', 'educatorId'];
       case 'educators':
-        return ['name', 'email', 'classes', 'spreadsheetId'];
+        return ['name', 'email', 'classes', 'spreadsheetId', 'active'];
       case 'users':
-        return ['email', 'role', 'name'];
+        return ['email', 'role', 'name', 'spreadsheetId', 'classes'];
       default:
         return [];
     }

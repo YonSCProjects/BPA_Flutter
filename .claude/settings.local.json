@@ -16,7 +16,9 @@
       "Bash(rg:*)",
       "Bash(node:*)",
       "Bash(flutter build:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(flutter clean:*)",
+      "Bash(flutter:*)"
     ],
     "deny": [],
     "ask": [],

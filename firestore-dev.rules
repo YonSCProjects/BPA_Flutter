@@ -5,13 +5,18 @@ service cloud.firestore {
     // DEVELOPMENT RULES - Allow public read for testing
     // WARNING: DO NOT USE IN PRODUCTION
     
-    // Allow public read access to educators and students
+    // Allow public read access to educators, students, and users
     match /educators/{document=**} {
       allow read: if true;
       allow write: if false;
     }
     
     match /students/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    match /users/{document=**} {
       allow read: if true;
       allow write: if false;
     }
