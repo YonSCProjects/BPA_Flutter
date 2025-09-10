@@ -23,6 +23,10 @@ class GoogleAuthService extends ChangeNotifier {
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
     ),
+    iOptions: IOSOptions(
+      groupId: 'com.bpa.student.keychain',
+      accountName: 'BPApp',
+    ),
   );
 
   GoogleSignInAccount? _currentUser;
