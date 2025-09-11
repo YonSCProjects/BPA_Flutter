@@ -9,11 +9,23 @@ Last Updated: January 2025
 ✅ **WEB ADMIN PORTAL DEPLOYED** - Live at https://bpapp-firebase-485c1.web.app
 ✅ **FIREBASE SECURITY RULES UPDATED** - Public read for Flutter app, authenticated write for admin portal
 ✅ **ALL FIRESTORE FIELDS DISPLAYED** - Web admin shows all fields including createdAt, active status, notes, etc.
+✅ **NEW SCORING SYSTEM IMPLEMENTED** - Dynamic point ranges based on class number (0-7 or 0-6 max)
 
 ## Overview
 This document captures all existing Google Cloud, Firebase, and OAuth configurations in BPApp. The app now implements educator self-initialization where educators create their own BPApp spreadsheets that are automatically shared with the service account.
 
 ## 1. Recent Changes (January 2025)
+
+### Scoring System Update (January 11, 2025)
+- **New Point Ranges**: Dynamic maximum scores based on class number
+- **Classes 2-6**: 7 points maximum (all fields shown)
+- **Classes 1 & 7**: 6 points maximum (Personal Goal field hidden)
+- **Field Updates**:
+  - שהייה (Staying): 0-2 points (was 0-3)
+  - אווירה (Attitude): 0-1 points (was 0-2)
+  - ביצוע (Performance): 0-1 points (was 0-2)
+  - מטרה אישית (Personal Goal): 0-1 points (was 0-2), hidden for classes 1 & 7
+- **UI Changes**: Conditional field display and dynamic max score indicator
 
 ### Service Account Implementation
 - **Service Account Email**: `bpapp-service-account@bpapp-firebase-485c1.iam.gserviceaccount.com`

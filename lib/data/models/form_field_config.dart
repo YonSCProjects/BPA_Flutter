@@ -74,8 +74,8 @@ class FormFieldConfig {
       fieldKey: 'staying',
       type: FieldType.numberPicker,
       minValue: 0,
-      maxValue: 3,
-      allowedValues: [0, 1, 2, 3],
+      maxValue: 2,
+      allowedValues: [0, 1, 2],
       isRequired: true,
     ),
     FormFieldConfig(
@@ -83,8 +83,8 @@ class FormFieldConfig {
       fieldKey: 'attitude',
       type: FieldType.numberPicker,
       minValue: 0,
-      maxValue: 2,
-      allowedValues: [0, 1, 2],
+      maxValue: 1,
+      allowedValues: [0, 1],
       isRequired: true,
     ),
     FormFieldConfig(
@@ -92,8 +92,8 @@ class FormFieldConfig {
       fieldKey: 'performance',
       type: FieldType.numberPicker,
       minValue: 0,
-      maxValue: 2,
-      allowedValues: [0, 1, 2],
+      maxValue: 1,
+      allowedValues: [0, 1],
       isRequired: true,
     ),
     FormFieldConfig(
@@ -101,8 +101,8 @@ class FormFieldConfig {
       fieldKey: 'personalGoal',
       type: FieldType.numberPicker,
       minValue: 0,
-      maxValue: 2,
-      allowedValues: [0, 1, 2],
+      maxValue: 1,
+      allowedValues: [0, 1],
       isRequired: true,
     ),
     FormFieldConfig(

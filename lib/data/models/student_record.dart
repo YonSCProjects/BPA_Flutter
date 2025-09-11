@@ -4,10 +4,10 @@ class StudentRecord {
   final String className;         // שם הכיתה
   final int classNumber;          // מספר השיעור (1-7)
   final int entry;                // כניסה (0-1)
-  final int staying;              // שהייה (0-3)
-  final int attitude;             // אווירה (0-2)
-  final int performance;          // ביצוע (0-2)
-  final int personalGoal;         // מטרה אישית (0-2)
+  final int staying;              // שהייה (0-2)
+  final int attitude;             // אווירה (0-1)
+  final int performance;          // ביצוע (0-1)
+  final int personalGoal;         // מטרה אישית (0-1)
   final int bonus;                // בונוס (0-1)
   final String comments;          // הערות
   final int totalScore;           // סה"כ (calculated)
@@ -68,10 +68,10 @@ class StudentRecord {
       className: '',
       classNumber: 1,
       entry: 1,
-      staying: 3,
-      attitude: 2,
-      performance: 2,
-      personalGoal: 2,
+      staying: 2,
+      attitude: 1,
+      performance: 1,
+      personalGoal: 1,
       bonus: 0,
       comments: '',
       totalScore: 0,

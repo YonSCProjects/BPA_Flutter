@@ -17,7 +17,7 @@ class HebrewStrings {
   
   // Scoring
   static const String totalScore = 'סה"כ נקודות';
-  static const String maxScore = 'מתוך 11';
+  static const String maxScore = 'מתוך 7';
   
   // Entry Values
   static const String onTime = 'בזמן';
@@ -25,8 +25,7 @@ class HebrewStrings {
   
   // Staying Values
   static const String leftEarly = 'יצא מוקדם';
-  static const String stayed15Min = '15 דקות';
-  static const String stayed30Min = '30 דקות';
+  static const String stayedPartial = 'חלקי';
   static const String stayedFullClass = 'שיעור מלא';
   
   // Buttons

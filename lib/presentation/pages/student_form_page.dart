@@ -600,7 +600,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
                 value: formProvider.currentRecord.staying,
                 onChanged: (value) => formProvider.updateField('staying', value),
                 minValue: 0,
-                maxValue: 3,
+                maxValue: 2,
                 isRequired: true,
               ),
             ),
@@ -615,7 +615,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
                 value: formProvider.currentRecord.attitude,
                 onChanged: (value) => formProvider.updateField('attitude', value),
                 minValue: 0,
-                maxValue: 2,
+                maxValue: 1,
                 isRequired: true,
               ),
             ),
@@ -626,38 +626,51 @@ class _StudentFormPageState extends State<StudentFormPage> {
                 value: formProvider.currentRecord.performance,
                 onChanged: (value) => formProvider.updateField('performance', value),
                 minValue: 0,
-                maxValue: 2,
-                isRequired: true,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: HebrewNumberPicker(
-                label: 'מטרה אישית',
-                value: formProvider.currentRecord.personalGoal,
-                onChanged: (value) => formProvider.updateField('personalGoal', value),
-                minValue: 0,
-                maxValue: 2,
-                isRequired: true,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: HebrewNumberPicker(
-                label: 'בונוס',
-                value: formProvider.currentRecord.bonus,
-                onChanged: (value) => formProvider.updateField('bonus', value),
-                minValue: 0,
                 maxValue: 1,
                 isRequired: true,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        // Show Personal Goal only for classes 2-6 (not for classes 1 and 7)
+        if (formProvider.currentRecord.classNumber != 1 && 
+            formProvider.currentRecord.classNumber != 7)
+          Row(
+            children: [
+              Expanded(
+                child: HebrewNumberPicker(
+                  label: 'מטרה אישית',
+                  value: formProvider.currentRecord.personalGoal,
+                  onChanged: (value) => formProvider.updateField('personalGoal', value),
+                  minValue: 0,
+                  maxValue: 1,
+                  isRequired: true,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: HebrewNumberPicker(
+                  label: 'בונוס',
+                  value: formProvider.currentRecord.bonus,
+                  onChanged: (value) => formProvider.updateField('bonus', value),
+                  minValue: 0,
+                  maxValue: 1,
+                  isRequired: true,
+                ),
+              ),
+            ],
+          )
+        else
+          // For classes 1 and 7, only show Bonus field (full width)
+          HebrewNumberPicker(
+            label: 'בונוס',
+            value: formProvider.currentRecord.bonus,
+            onChanged: (value) => formProvider.updateField('bonus', value),
+            minValue: 0,
+            maxValue: 1,
+            isRequired: true,
+          ),
       ],
     );
   }
@@ -674,6 +687,11 @@ class _StudentFormPageState extends State<StudentFormPage> {
   }
 
   Widget _buildScoreDisplay(FormProvider formProvider) {
+    // Classes 1 and 7 have max score of 6 (no personal goal)
+    // Classes 2-6 have max score of 7
+    final int maxScore = (formProvider.currentRecord.classNumber == 1 || 
+                         formProvider.currentRecord.classNumber == 7) ? 6 : 7;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -685,7 +703,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
       ),
       child: ScoreDisplay(
         totalScore: formProvider.currentRecord.calculateTotalScore(),
-        maxScore: 11,
+        maxScore: maxScore,
       ),
     );
   }

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # BPApp - Hebrew Student Tracking System
 
 ## Project Overview
-Hebrew-language cross-platform mobile application for teachers to track student performance and attendance through 11 structured input fields with automatic Google Sheets integration. Each user maintains their own private "BPApp" spreadsheet with real-time score calculation and smart record matching.
+Hebrew-language cross-platform mobile application for teachers to track student performance and attendance through structured input fields with automatic Google Sheets integration. Each user maintains their own private "BPApp" spreadsheet with real-time score calculation and smart record matching.
 
 ## Current Status (January 2025)
 ✅ **ENTERPRISE FEATURES ACTIVE** - Firebase integration with service account and dynamic dropdowns
@@ -14,6 +14,7 @@ Hebrew-language cross-platform mobile application for teachers to track student 
 ✅ **Phase 3 Complete**: Dynamic dropdowns powered by Firebase data
 ✅ **WEB ADMIN PORTAL DEPLOYED**: Full CRUD interface live at https://bpapp-firebase-485c1.web.app
 ✅ **FIREBASE SECURITY RULES**: Updated to allow public read for Flutter app, authenticated write for admin
+✅ **NEW SCORING SYSTEM**: Updated point ranges (0-7 max for classes 2-6, 0-6 for classes 1 and 7)
 📋 **See `CURRENT_INFRASTRUCTURE.md`** for complete existing configuration details
 📘 **See `WEB_ADMIN_GUIDE.md`** for admin portal documentation and deployment instructions
 🚀 **Current branch**: `service-account-final` with all enterprise features
@@ -36,8 +37,10 @@ Hebrew-language cross-platform mobile application for teachers to track student 
 ## Core Features (All Working)
 1. **Google Sign-In + Service Account** with proper OAuth scopes
 2. **Automatic spreadsheet** creation/discovery with centralized management
-3. **11 Hebrew input fields** with validation
-4. **Real-time score calculation** (0-11 points)
+3. **Hebrew input fields** with validation and conditional display
+4. **Real-time score calculation** with dynamic max scores:
+   - Classes 2-6: 0-7 points (all fields)
+   - Classes 1 & 7: 0-6 points (no Personal Goal field)
 5. **Offline-first SQLite** with background sync
 6. **4-field record matching** for updates
 7. **Multi-destination saving** to educator sheets with mappings
@@ -45,6 +48,27 @@ Hebrew-language cross-platform mobile application for teachers to track student 
 9. **Firebase Firestore** backend with educators/students collections
 10. **Dynamic dropdowns** for student and educator selection
 11. **Enterprise configuration** with phase-based feature flags
+
+## Scoring System Details
+
+### Point Ranges (Updated January 2025)
+The app uses a dynamic scoring system based on class number:
+
+**Classes 2-6 (7 points maximum):**
+- כניסה (Entry): 0-1 points
+- שהייה (Staying): 0-2 points  
+- אווירה (Attitude): 0-1 points
+- ביצוע (Performance): 0-1 points
+- מטרה אישית (Personal Goal): 0-1 points
+- בונוס (Bonus): 0-1 points
+
+**Classes 1 & 7 (6 points maximum):**
+- כניסה (Entry): 0-1 points
+- שהייה (Staying): 0-2 points
+- אווירה (Attitude): 0-1 points
+- ביצוע (Performance): 0-1 points
+- בונוס (Bonus): 0-1 points
+- *Personal Goal field is hidden and automatically set to 0*
 
 ## Development Workflow
 

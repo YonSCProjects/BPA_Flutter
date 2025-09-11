@@ -136,7 +136,12 @@ class FormProvider extends ChangeNotifier {
     _setError(null);
 
     try {
-      final recordToSave = _currentRecord.withCalculatedScore();
+      // For classes 1 and 7, ensure personal goal is 0
+      var recordToSave = _currentRecord;
+      if (recordToSave.classNumber == 1 || recordToSave.classNumber == 7) {
+        recordToSave = recordToSave.copyWith(personalGoal: 0);
+      }
+      recordToSave = recordToSave.withCalculatedScore();
       
       // Use multi-destination service with the required services
       final multiService = MultiDestinationSheetsService(
