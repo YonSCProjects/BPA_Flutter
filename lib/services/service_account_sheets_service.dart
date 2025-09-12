@@ -7,9 +7,12 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../config/app_config.dart';
 import '../data/models/student_record.dart';
 import 'service_account_jwt_auth.dart';
+import 'google_sheets_service.dart';
 
 // Extension for DateTime comparison
 extension DateTimeComparison on DateTime {
@@ -33,9 +36,12 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   
   static const List<String> _scopes = [
     'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive',  // Full drive access for ownership
     'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
   ];
+  
+  // Service account email for tracking ownership
+  String? _serviceAccountEmail;
 
   // Service account components
   AuthClient? _authClient; // Changed to support custom JWT auth
@@ -54,6 +60,7 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isEnabled => AppConfig.useServiceAccount && !AppConfig.emergencyDisable;
+  String? get serviceAccountEmail => _serviceAccountEmail;
   
   /// Initialize service account authentication
   Future<bool> initialize() async {
@@ -115,6 +122,7 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       _credentialsJson = jsonDecode(credentialsJson); // Store full JSON
       
       _credentials = ServiceAccountCredentials.fromJson(_credentialsJson!);
+      _serviceAccountEmail = _credentials!.email;
       _logDebug('Service account credentials loaded successfully');
       _logDebug('Client Email: ${_credentials!.email}');
       print('✅ Service account loaded: ${_credentials!.email}');
@@ -801,6 +809,287 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   void _logDebug(String message) {
     if (AppConfig.debugEnterpriseFeatures) {
       debugPrint('[SERVICE_ACCOUNT] $message');
+    }
+  }
+  
+  // ===== NEW METHODS FOR SERVICE ACCOUNT OWNERSHIP =====
+  
+  /// Create a new spreadsheet owned by the service account and shared with user as viewer
+  Future<String?> createUserOwnedSpreadsheet(String userEmail, String userName) async {
+    if (!_isInitialized || _sheetsApi == null || _driveApi == null) {
+      _logDebug('❌ Service account not initialized for spreadsheet creation');
+      return null;
+    }
+    
+    try {
+      _logDebug('🆕 Creating service-account-owned spreadsheet for: $userName ($userEmail)');
+      
+      // Step 1: Create spreadsheet owned by service account
+      final spreadsheet = sheets.Spreadsheet(
+        properties: sheets.SpreadsheetProperties(
+          title: 'BPApp - $userName',
+          locale: 'he_IL',
+          timeZone: 'Asia/Jerusalem',
+        ),
+        sheets: [
+          sheets.Sheet(
+            properties: sheets.SheetProperties(
+              title: GoogleSheetsService.worksheetName,
+              rightToLeft: true,
+              gridProperties: sheets.GridProperties(
+                frozenRowCount: 1,
+                columnCount: GoogleSheetsService.hebrewHeaders.length,
+              ),
+            ),
+          ),
+        ],
+      );
+      
+      final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
+      final spreadsheetId = response.spreadsheetId!;
+      
+      _logDebug('✅ Created spreadsheet: $spreadsheetId (owned by service account)');
+      
+      // Step 2: Add headers
+      await _addHeadersToSpreadsheet(spreadsheetId);
+      
+      // Step 3: Share with user as VIEWER only
+      await _shareAsViewer(spreadsheetId, userEmail);
+      
+      // Step 4: Update Firestore with spreadsheet ID
+      await _updateUserSpreadsheetId(userEmail, spreadsheetId);
+      
+      _logDebug('✅ Successfully created and shared spreadsheet for $userName');
+      return spreadsheetId;
+      
+    } catch (e) {
+      _setError('Failed to create user spreadsheet: $e');
+      _logDebug('❌ Error creating user spreadsheet: $e');
+      return null;
+    }
+  }
+  
+  /// Share spreadsheet with user as viewer only (read-only access)
+  Future<void> _shareAsViewer(String spreadsheetId, String userEmail) async {
+    if (_driveApi == null) return;
+    
+    try {
+      _logDebug('👁️ Sharing spreadsheet with $userEmail as VIEWER only');
+      
+      final permission = drive.Permission()
+        ..type = 'user'
+        ..role = 'reader'  // VIEWER ONLY - This is the key!
+        ..emailAddress = userEmail;
+      
+      await _driveApi!.permissions.create(
+        permission,
+        spreadsheetId,
+        sendNotificationEmail: true,  // Notify user they have access
+      );
+      
+      _logDebug('✅ Shared with $userEmail as viewer (read-only)');
+    } catch (e) {
+      _logDebug('❌ Error sharing spreadsheet: $e');
+      throw e;
+    }
+  }
+  
+  /// Update user's spreadsheet ID in Firestore
+  Future<void> _updateUserSpreadsheetId(String userEmail, String spreadsheetId) async {
+    try {
+      _logDebug('📝 Updating Firestore with spreadsheet ID for $userEmail');
+      
+      // Find user document by email
+      final querySnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isEqualTo: userEmail)
+        .limit(1)
+        .get();
+      
+      if (querySnapshot.docs.isNotEmpty) {
+        // Update existing user document
+        await querySnapshot.docs.first.reference.update({
+          'spreadsheetId': spreadsheetId,
+          'spreadsheetOwner': 'service_account',
+          'lastSync': FieldValue.serverTimestamp(),
+        });
+        _logDebug('✅ Updated Firestore for existing user');
+      } else {
+        // Create new user document if doesn't exist
+        await FirebaseFirestore.instance.collection('users').add({
+          'email': userEmail,
+          'spreadsheetId': spreadsheetId,
+          'spreadsheetOwner': 'service_account',
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastSync': FieldValue.serverTimestamp(),
+        });
+        _logDebug('✅ Created new Firestore user document');
+      }
+    } catch (e) {
+      _logDebug('⚠️ Error updating Firestore: $e');
+      // Non-critical error - spreadsheet still works without Firestore cache
+    }
+  }
+  
+  /// Get user's spreadsheet ID from Firestore cache
+  Future<String?> getUserSpreadsheetId(String userEmail) async {
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isEqualTo: userEmail)
+        .limit(1)
+        .get();
+      
+      if (querySnapshot.docs.isNotEmpty) {
+        final data = querySnapshot.docs.first.data();
+        return data['spreadsheetId'] as String?;
+      }
+    } catch (e) {
+      _logDebug('Error getting spreadsheet ID from Firestore: $e');
+    }
+    return null;
+  }
+  
+  /// Find user's service-account-owned spreadsheet
+  Future<String?> findUserSpreadsheet(String userEmail, String userName) async {
+    if (!_isInitialized || _driveApi == null) return null;
+    
+    try {
+      // First check Firestore cache
+      final cachedId = await getUserSpreadsheetId(userEmail);
+      if (cachedId != null) {
+        _logDebug('📋 Found cached spreadsheet ID: $cachedId');
+        // Verify it still exists
+        try {
+          await _driveApi!.files.get(cachedId);
+          return cachedId;
+        } catch (e) {
+          _logDebug('⚠️ Cached spreadsheet no longer exists');
+        }
+      }
+      
+      // Search for service-account-owned spreadsheet shared with user
+      final query = "name contains 'BPApp - $userName' and "
+                   "mimeType='application/vnd.google-apps.spreadsheet' and "
+                   "trashed=false and "
+                   "'$_serviceAccountEmail' in owners";
+      
+      _logDebug('🔍 Searching for spreadsheet with query: $query');
+      
+      final response = await _driveApi!.files.list(
+        q: query,
+        spaces: 'drive',
+        $fields: 'files(id,name,owners,permissions)',
+      );
+      
+      if (response.files != null && response.files!.isNotEmpty) {
+        // Check if user has access
+        for (final file in response.files!) {
+          final fileId = file.id!;
+          
+          // Get permissions to verify user access
+          try {
+            final permissions = await _driveApi!.permissions.list(fileId);
+            final hasAccess = permissions.permissions?.any(
+              (p) => p.emailAddress == userEmail
+            ) ?? false;
+            
+            if (hasAccess) {
+              _logDebug('✅ Found spreadsheet with user access: $fileId');
+              // Update cache
+              await _updateUserSpreadsheetId(userEmail, fileId);
+              return fileId;
+            }
+          } catch (e) {
+            _logDebug('Error checking permissions: $e');
+          }
+        }
+      }
+      
+      _logDebug('❌ No spreadsheet found for user');
+      return null;
+      
+    } catch (e) {
+      _logDebug('Error finding user spreadsheet: $e');
+      return null;
+    }
+  }
+  
+  /// Main save method that handles all spreadsheet writes
+  Future<bool> saveRecordForUser(StudentRecord record, String userEmail, String userName) async {
+    if (!_isInitialized || _sheetsApi == null) {
+      _setError('Service account not initialized');
+      return false;
+    }
+    
+    try {
+      _logDebug('💾 Saving record for user: $userName');
+      
+      // Find or create user's spreadsheet
+      String? spreadsheetId = await findUserSpreadsheet(userEmail, userName);
+      
+      if (spreadsheetId == null) {
+        _logDebug('🆕 No spreadsheet found, creating new one');
+        spreadsheetId = await createUserOwnedSpreadsheet(userEmail, userName);
+        
+        if (spreadsheetId == null) {
+          _setError('Failed to create spreadsheet');
+          return false;
+        }
+      }
+      
+      // Save the record (service account owns the sheet so has full access)
+      final success = await saveToSpreadsheetId(spreadsheetId, record);
+      
+      if (success) {
+        _logDebug('✅ Record saved successfully');
+        
+        // Check for educator mapping and save there too
+        await _handleEducatorSave(record);
+      }
+      
+      return success;
+      
+    } catch (e) {
+      _setError('Error saving record: $e');
+      _logDebug('❌ Error in saveRecordForUser: $e');
+      return false;
+    }
+  }
+  
+  /// Handle multi-destination save to educator spreadsheet
+  Future<void> _handleEducatorSave(StudentRecord record) async {
+    try {
+      // Check educator mappings in Firestore
+      final mappingQuery = await FirebaseFirestore.instance
+        .collection('educator_mappings')
+        .where('className', isEqualTo: record.className)
+        .limit(1)
+        .get();
+      
+      if (mappingQuery.docs.isNotEmpty) {
+        final mapping = mappingQuery.docs.first.data();
+        final educatorEmail = mapping['educatorEmail'] as String?;
+        final educatorName = mapping['educatorName'] as String?;
+        
+        if (educatorEmail != null && educatorName != null) {
+          _logDebug('📚 Found educator mapping: $educatorName');
+          
+          // Find or create educator's spreadsheet
+          String? educatorSpreadsheetId = await findUserSpreadsheet(educatorEmail, educatorName);
+          
+          if (educatorSpreadsheetId == null) {
+            educatorSpreadsheetId = await createUserOwnedSpreadsheet(educatorEmail, "$educatorName (Educator)");
+          }
+          
+          if (educatorSpreadsheetId != null) {
+            await saveToSpreadsheetId(educatorSpreadsheetId, record);
+            _logDebug('✅ Saved to educator spreadsheet');
+          }
+        }
+      }
+    } catch (e) {
+      _logDebug('⚠️ Error in educator save (non-critical): $e');
     }
   }
   

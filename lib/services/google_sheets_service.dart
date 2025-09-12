@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis/drive/v3.dart' as drive;
 
+import '../config/app_config.dart';
 import '../data/models/student_record.dart';
 import '../data/models/autocomplete_data.dart';
 import 'google_auth_service.dart';
 import 'local_storage_service.dart';
 import 'educator_initialization_service.dart';
+import 'service_account_sheets_service.dart';
 
 class GoogleSheetsService extends ChangeNotifier {
   static const String spreadsheetName = 'BPApp';
@@ -30,6 +32,7 @@ class GoogleSheetsService extends ChangeNotifier {
   final GoogleAuthService _authService;
   final LocalStorageService _localStorageService = LocalStorageService();
   late final EducatorInitializationService _educatorInitService;
+  final ServiceAccountSheetsService _serviceAccountService = ServiceAccountSheetsService();
   
   /// Access to the authentication service for multi-destination saving
   GoogleAuthService get authService => _authService;
@@ -49,6 +52,15 @@ class GoogleSheetsService extends ChangeNotifier {
   GoogleSheetsService(this._authService) {
     _educatorInitService = EducatorInitializationService(_authService);
     _authService.addListener(_onAuthStateChanged);
+    // Initialize service account if enabled
+    if (AppConfig.useServiceAccount) {
+      _initializeServiceAccount();
+    }
+  }
+  
+  Future<void> _initializeServiceAccount() async {
+    debugPrint('🔐 [SHEETS] Initializing service account for all operations');
+    await _serviceAccountService.initialize();
   }
 
   bool get isLoading => _isLoading;
@@ -112,30 +124,60 @@ class GoogleSheetsService extends ChangeNotifier {
   Future<void> _findOrCreateSpreadsheet() async {
     debugPrint('🔍 [INIT] Starting spreadsheet discovery process...');
     
-    // Step 1: Look for user's own BPApp spreadsheet
-    await _findExistingSpreadsheet();
-    
-    if (_spreadsheetId == null) {
-      debugPrint('🔍 [INIT] No owned spreadsheet found - checking trash...');
+    // Check if service account ownership is enabled
+    if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
+      debugPrint('🔐 [INIT] Using SERVICE ACCOUNT ownership mode');
       
-      // Step 2: Check if spreadsheet exists in trash before creating new one
-      final recoveredFromTrash = await _checkAndRecoverFromTrash();
-      if (!recoveredFromTrash) {
-        debugPrint('🔍 [INIT] No recoverable spreadsheet found - creating new one...');
-        await _createSpreadsheet();
+      final userEmail = _authService.currentUser?.email;
+      final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
+      
+      if (userEmail == null) {
+        debugPrint('❌ [INIT] No user email available');
+        return;
       }
+      
+      // Find or create service-account-owned spreadsheet
+      _spreadsheetId = await _serviceAccountService.findUserSpreadsheet(userEmail, userName);
+      
+      if (_spreadsheetId == null) {
+        debugPrint('🆕 [INIT] Creating new service-account-owned spreadsheet');
+        _spreadsheetId = await _serviceAccountService.createUserOwnedSpreadsheet(userEmail, userName);
+      }
+      
+      if (_spreadsheetId != null) {
+        debugPrint('✅ [INIT] Using service-account-owned spreadsheet: $_spreadsheetId');
+        await _getSheetId();
+      }
+      
     } else {
-      debugPrint('✅ [INIT] Using existing spreadsheet: $_spreadsheetId');
-    }
-    
-    // Get sheet ID for API operations
-    if (_spreadsheetId != null && _sheetId == null) {
-      await _getSheetId();
-    }
-    
-    // Ensure existing spreadsheet has proper protection
-    if (_spreadsheetId != null) {
-      await _fixExistingProtection();
+      // Original user-owned mode (fallback)
+      debugPrint('👤 [INIT] Using USER ownership mode (fallback)');
+      
+      // Step 1: Look for user's own BPApp spreadsheet
+      await _findExistingSpreadsheet();
+      
+      if (_spreadsheetId == null) {
+        debugPrint('🔍 [INIT] No owned spreadsheet found - checking trash...');
+        
+        // Step 2: Check if spreadsheet exists in trash before creating new one
+        final recoveredFromTrash = await _checkAndRecoverFromTrash();
+        if (!recoveredFromTrash) {
+          debugPrint('🔍 [INIT] No recoverable spreadsheet found - creating new one...');
+          await _createSpreadsheet();
+        }
+      } else {
+        debugPrint('✅ [INIT] Using existing spreadsheet: $_spreadsheetId');
+      }
+      
+      // Get sheet ID for API operations
+      if (_spreadsheetId != null && _sheetId == null) {
+        await _getSheetId();
+      }
+      
+      // Ensure existing spreadsheet has proper protection
+      if (_spreadsheetId != null) {
+        await _fixExistingProtection();
+      }
     }
     
     // Check if this user is an educator and auto-initialize their spreadsheet ID
@@ -671,30 +713,46 @@ class GoogleSheetsService extends ChangeNotifier {
         }
       }
 
-      // Step 2: Attempt online sync (preserve original logic)
+      // Step 2: Attempt online sync
       bool onlineSuccess = false;
-      if (_sheetsApi != null && _spreadsheetId != null) {
+      
+      // Use service account if enabled
+      if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
+        debugPrint('🔐 [SAVE] Using SERVICE ACCOUNT for save operation');
+        final userEmail = _authService.currentUser?.email;
+        final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
+        
+        if (userEmail != null) {
+          onlineSuccess = await _serviceAccountService.saveRecordForUser(recordWithScore, userEmail, userName);
+        }
+      } else if (_sheetsApi != null && _spreadsheetId != null) {
+        // Fallback to original user-owned save
+        debugPrint('👤 [SAVE] Using USER account for save operation (fallback)');
         try {
           onlineSuccess = await _originalSaveRecord(recordWithScore);
-          
-          if (onlineSuccess) {
-            // Mark as synced in local storage
-            if (localSaveSuccess) {
-              await _localStorageService.markAsSynced(recordWithScore);
-            }
-            
-            // Update autocomplete data (preserve original behavior)
-            _autocompleteData = _autocompleteData.addFromRecord(recordWithScore);
-            notifyListeners();
-            
-            debugPrint('✅ [SAVE] Online sync successful');
-          } else {
-            // Mark as pending sync in local storage
-            if (localSaveSuccess) {
-              await _localStorageService.markAsPendingSync(recordWithScore);
-            }
-            debugPrint('⏳ [SAVE] Online sync failed, marked for retry');
-          }
+        } catch (e) {
+          debugPrint('❌ [SAVE] Error in user-owned save: $e');
+        }
+      }
+      
+      if (onlineSuccess) {
+        // Mark as synced in local storage
+        if (localSaveSuccess) {
+          await _localStorageService.markAsSynced(recordWithScore);
+        }
+        
+        // Update autocomplete data (preserve original behavior)
+        _autocompleteData = _autocompleteData.addFromRecord(recordWithScore);
+        notifyListeners();
+        
+        debugPrint('✅ [SAVE] Online sync successful');
+      } else {
+        // Mark as pending sync in local storage
+        if (localSaveSuccess) {
+          await _localStorageService.markAsPendingSync(recordWithScore);
+        }
+        debugPrint('⏳ [SAVE] Online sync failed, marked for retry');
+      }
         } catch (e) {
           debugPrint('❌ [SAVE] Online sync error: $e');
           if (localSaveSuccess) {
