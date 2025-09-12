@@ -393,26 +393,10 @@ class MultiDestinationSheetsService extends ChangeNotifier {
         emailAddress: educatorEmail,
       );
       
-      // CRITICAL: First ensure admin@bpappedu.com retains editor access
-      debugPrint('👑 [MULTI-SAVE] Step 1: Ensuring admin retains editor access...');
-      try {
-        final adminPermission = drive.Permission(
-          type: 'user',
-          role: 'writer',
-          emailAddress: 'admin@bpappedu.com', // Service account's impersonated user
-        );
-        
-        await driveApi.permissions.create(
-          adminPermission,
-          spreadsheetId,
-          sendNotificationEmail: false,
-        );
-        debugPrint('✅ [MULTI-SAVE] Admin editor access ensured');
-      } catch (e) {
-        debugPrint('⚠️ [MULTI-SAVE] Could not ensure admin access: $e');
-      }
+      // Note: Service account retains access through sharing permissions
+      // No admin email needed as impersonation is not used
       
-      // Now safe to transfer ownership
+      // Transfer ownership to educator
       debugPrint('👑 [MULTI-SAVE] Step 2: Transferring ownership to educator...');
       debugPrint('👑 [MULTI-SAVE] Permission: type=${ownerPermission.type}, role=${ownerPermission.role}, email=${ownerPermission.emailAddress}');
       debugPrint('👑 [MULTI-SAVE] transferOwnership=true, sendNotificationEmail=true');

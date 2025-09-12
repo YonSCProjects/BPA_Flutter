@@ -28,8 +28,8 @@ extension DateTimeComparison on DateTime {
 class ServiceAccountSheetsService extends ChangeNotifier {
   static const String _serviceAccountAssetPath = 'assets/service_account.json';
   
-  // Google Workspace admin email for impersonation
-  static const String adminEmail = 'admin@bpappedu.com'; // YOUR WORKSPACE EMAIL
+  // Note: Impersonation is not used in the current implementation
+  // The service account uses direct authentication without impersonation
   
   static const List<String> _scopes = [
     'https://www.googleapis.com/auth/spreadsheets',

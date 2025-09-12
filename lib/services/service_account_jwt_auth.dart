@@ -13,7 +13,7 @@ class ServiceAccountJWTAuth {
   static Future<AccessToken> getAccessToken({
     required Map<String, dynamic> serviceAccountJson,
     required List<String> scopes,
-    required String impersonatedUser, // The user to impersonate (admin@bpappedu.com)
+    required String impersonatedUser, // The user to impersonate (if domain-wide delegation is enabled)
   }) async {
     final String clientEmail = serviceAccountJson['client_email'];
     final String privateKeyPem = serviceAccountJson['private_key'];
