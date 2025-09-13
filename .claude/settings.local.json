@@ -20,7 +20,8 @@
       "Bash(flutter clean:*)",
       "Bash(flutter:*)",
       "Bash(nc localhost 64631)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(adb:*)"
     ],
     "deny": [],
     "ask": [],

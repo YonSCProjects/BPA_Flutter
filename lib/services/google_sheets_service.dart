@@ -125,61 +125,33 @@ class GoogleSheetsService extends ChangeNotifier {
   Future<void> _findOrCreateSpreadsheet() async {
     debugPrint('🔍 [INIT] Starting spreadsheet discovery process...');
     
-    // Check if service account ownership is enabled
-    if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
-      debugPrint('🔐 [INIT] Using SERVICE ACCOUNT ownership mode');
+    // ALWAYS use user's own OAuth spreadsheet for teacher records
+    // Service account is only for saving to educator spreadsheets
+    debugPrint('👤 [INIT] Using USER ownership mode for teacher\'s own spreadsheet');
+    
+    // Step 1: Look for user's own BPApp spreadsheet
+    await _findExistingSpreadsheet();
       
-      final userEmail = _authService.currentUser?.email;
-      final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
+    if (_spreadsheetId == null) {
+      debugPrint('🔍 [INIT] No owned spreadsheet found - checking trash...');
       
-      if (userEmail == null) {
-        debugPrint('❌ [INIT] No user email available');
-        return;
+      // Step 2: Check if spreadsheet exists in trash before creating new one
+      final recoveredFromTrash = await _checkAndRecoverFromTrash();
+      if (!recoveredFromTrash) {
+        debugPrint('🔍 [INIT] No recoverable spreadsheet found - creating new one...');
+        await _createSpreadsheet();
       }
-      
-      // Find or create service-account-owned spreadsheet
-      _spreadsheetId = await _serviceAccountService.findUserSpreadsheet(userEmail, userName);
-      
-      if (_spreadsheetId == null) {
-        debugPrint('🆕 [INIT] Creating new service-account-owned spreadsheet');
-        _spreadsheetId = await _serviceAccountService.createUserOwnedSpreadsheet(userEmail, userName);
-      }
-      
-      if (_spreadsheetId != null) {
-        debugPrint('✅ [INIT] Using service-account-owned spreadsheet: $_spreadsheetId');
-        await _getSheetId();
-      }
-      
     } else {
-      // Original user-owned mode (fallback)
-      debugPrint('👤 [INIT] Using USER ownership mode (fallback)');
-      
-      // Step 1: Look for user's own BPApp spreadsheet
-      await _findExistingSpreadsheet();
-      
-      if (_spreadsheetId == null) {
-        debugPrint('🔍 [INIT] No owned spreadsheet found - checking trash...');
-        
-        // Step 2: Check if spreadsheet exists in trash before creating new one
-        final recoveredFromTrash = await _checkAndRecoverFromTrash();
-        if (!recoveredFromTrash) {
-          debugPrint('🔍 [INIT] No recoverable spreadsheet found - creating new one...');
-          await _createSpreadsheet();
-        }
-      } else {
-        debugPrint('✅ [INIT] Using existing spreadsheet: $_spreadsheetId');
-      }
-      
-      // Get sheet ID for API operations
-      if (_spreadsheetId != null && _sheetId == null) {
-        await _getSheetId();
-      }
-      
-      // Ensure existing spreadsheet has proper protection
-      if (_spreadsheetId != null) {
-        await _fixExistingProtection();
-      }
+      debugPrint('✅ [INIT] Using existing spreadsheet: $_spreadsheetId');
     }
+    
+    // Get sheet ID for API operations
+    if (_spreadsheetId != null && _sheetId == null) {
+      await _getSheetId();
+    }
+    
+    // Note: Protection removed as per user request
+    // Service account handles educator spreadsheets separately
     
     // Check if this user is an educator and auto-initialize their spreadsheet ID
     if (_spreadsheetId != null && _authService.currentUser?.email != null) {
@@ -720,12 +692,13 @@ class GoogleSheetsService extends ChangeNotifier {
       // Step 2: Attempt online sync
       bool onlineSuccess = false;
       
-      // First ensure the teacher has their own spreadsheet using OAuth
+      // Ensure spreadsheet exists before attempting save
       if (_spreadsheetId == null) {
-        debugPrint('📋 [SAVE] Teacher spreadsheet not found, creating with OAuth...');
+        debugPrint('⚠️ [SAVE] No spreadsheet ID found, attempting to discover/create spreadsheet');
         await _findExistingSpreadsheet();
         
         if (_spreadsheetId == null) {
+          debugPrint('🔍 [SAVE] No owned spreadsheet found - creating new one...');
           await _createSpreadsheet();
         }
         
@@ -734,24 +707,26 @@ class GoogleSheetsService extends ChangeNotifier {
         }
       }
       
-      // Now save using the appropriate method
+      // Save using the available method
       if (_sheetsApi != null && _spreadsheetId != null) {
-        // Always use OAuth for the teacher's own spreadsheet
-        debugPrint('👤 [SAVE] Using USER OAuth for teacher\'s own spreadsheet');
+        // Use OAuth for the teacher's own spreadsheet
+        debugPrint('👤 [SAVE] Using USER OAuth for save operation');
         try {
           onlineSuccess = await _originalSaveRecord(recordWithScore);
         } catch (e) {
           debugPrint('❌ [SAVE] Error in user-owned save: $e');
         }
       } else if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
-        // Fallback to service account if OAuth fails
-        debugPrint('🔐 [SAVE] OAuth unavailable, using SERVICE ACCOUNT as fallback');
+        // Use service account if OAuth is not available
+        debugPrint('🔐 [SAVE] Using SERVICE ACCOUNT for save operation');
         final userEmail = _authService.currentUser?.email;
         final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
         
         if (userEmail != null) {
           onlineSuccess = await _serviceAccountService.saveRecordForUser(recordWithScore, userEmail, userName);
         }
+      } else {
+        debugPrint('❌ [SAVE] No save method available');
       }
       
       if (onlineSuccess) {

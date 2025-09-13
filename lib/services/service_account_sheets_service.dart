@@ -828,7 +828,7 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       final spreadsheet = sheets.Spreadsheet(
         properties: sheets.SpreadsheetProperties(
           title: 'BPApp - $userName',
-          locale: 'he_IL',
+          // locale: 'he_IL', // Removed - unsupported by API
           timeZone: 'Asia/Jerusalem',
         ),
         sheets: [
