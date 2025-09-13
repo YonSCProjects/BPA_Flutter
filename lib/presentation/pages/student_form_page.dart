@@ -6,6 +6,7 @@ import '../../services/google_auth_service.dart';
 import '../../services/google_sheets_service.dart';
 import '../../services/firebase_data_service.dart';
 import '../../services/educator_self_init_service.dart';
+import '../../data/models/student_record.dart';
 import '../widgets/hebrew_text_field.dart';
 import '../widgets/firebase_dropdown.dart';
 import '../widgets/hebrew_number_picker.dart';
@@ -204,8 +205,49 @@ class _StudentFormPageState extends State<StudentFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    final formProvider = context.watch<FormProvider>();
+    
+    return PopScope(
+      canPop: !formProvider.hasPendingRecords,
+      onPopInvoked: (didPop) async {
+        if (!didPop && formProvider.hasPendingRecords) {
+          final shouldLeave = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text(
+                'רשומות לא נשמרו',
+                textDirection: TextDirection.rtl,
+              ),
+              content: Text(
+                'יש ${formProvider.pendingCount} תלמידים שטרם נשמרו. האם לצאת בכל זאת?',
+                textDirection: TextDirection.rtl,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('הישאר'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    formProvider.clearBatch();
+                    Navigator.pop(context, true);
+                  },
+                  child: const Text(
+                    'צא ללא שמירה',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldLeave == true && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
         title: const Text('תכנית התנהגותית - ניקוד'),
         // Using theme's default app bar color for better contrast
         actions: [
@@ -368,6 +410,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
 
           return _buildForm(formProvider);
         },
+      ),
       ),
     );
   }
@@ -741,37 +784,73 @@ class _StudentFormPageState extends State<StudentFormPage> {
       ),
       child: Column(
         children: [
+          // Pending students indicator
+          if (formProvider.hasPendingRecords)
+            _buildPendingIndicator(formProvider),
+          
+          // Main action buttons
           Row(
             children: [
+              // Next Student button (expanded to take more space)
               Expanded(
-                child: OutlinedButton(
-                  onPressed: formProvider.isLoading ? null : () => formProvider.resetForm(),
-                  child: const Text('נקה טופס'),
+                child: ElevatedButton.icon(
+                  onPressed: formProvider.isLoading ? null : () => _handleNextStudent(formProvider),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                  ),
+                  icon: const Icon(Icons.arrow_forward, size: 20),
+                  label: Text(
+                    formProvider.pendingCount > 0 
+                      ? 'הבא/ה (${formProvider.pendingCount})'
+                      : 'תלמיד/ה הבא/ה',
+                  ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
+              
+              // Save button (expanded equally)
               Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: formProvider.isLoading ? null : () => _saveRecord(formProvider),
-                  child: formProvider.isLoading
+                child: ElevatedButton.icon(
+                  onPressed: formProvider.isLoading ? null : () => _handleSave(formProvider),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: formProvider.hasPendingRecords ? Colors.green : null,
+                  ),
+                  icon: formProvider.isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : Text(formProvider.isUpdateMode ? 'עדכן רשומה' : 'שמור רשומה'),
+                      : const Icon(Icons.save, size: 20),
+                  label: Text(
+                    formProvider.hasPendingRecords 
+                      ? 'שמור הכל (${formProvider.pendingCount + (formProvider.isCurrentRecordValid() ? 1 : 0)})'
+                      : (formProvider.isUpdateMode ? 'עדכן' : 'שמור'),
+                  ),
                 ),
               ),
             ],
           ),
-          if (formProvider.isUpdateMode)
+          
+          // Status indicators
+          if (formProvider.isUpdateMode && !formProvider.isEditingPendingRecord)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 'מצב עדכון - רשומה קיימת תתעדכן',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Colors.orange,
+                    ),
+                textDirection: TextDirection.rtl,
+              ),
+            ),
+          if (formProvider.isEditingPendingRecord)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'עריכת רשומה ממתינה ${formProvider.currentBatchIndex + 1}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.blue,
                     ),
                 textDirection: TextDirection.rtl,
               ),
@@ -797,6 +876,230 @@ class _StudentFormPageState extends State<StudentFormPage> {
     } else {
       debugPrint('🔄 [UI] Not all required fields filled - skipping check');
     }
+  }
+
+  Widget _buildPendingIndicator(FormProvider formProvider) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.group, color: Colors.orange.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'תלמידים ממתינים לשמירה: ${formProvider.pendingCount}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade800,
+                  fontSize: 14,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // List of pending students
+          ...formProvider.pendingRecords.asMap().entries.map((entry) {
+            final index = entry.key;
+            final record = entry.value;
+            return InkWell(
+              onTap: () => _editPendingRecord(formProvider, index),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                margin: const EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.person,
+                      size: 16,
+                      color: Colors.orange.shade600,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        '${record.studentName} - ${record.className}',
+                        style: const TextStyle(fontSize: 13),
+                        textDirection: TextDirection.rtl,
+                      ),
+                    ),
+                    Text(
+                      'ניקוד: ${record.totalScore}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                      textDirection: TextDirection.rtl,
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: () => _removePendingRecord(formProvider, record),
+                      child: Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.red.shade400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+
+  Future<void> _handleNextStudent(FormProvider formProvider) async {
+    // Validate current form
+    if (!formProvider.isCurrentRecordValid()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'יש למלא את שם התלמיד ושם הכיתה',
+            textDirection: TextDirection.rtl,
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    // Add to queue and move to next
+    final success = await formProvider.addToQueueAndMoveNext();
+    
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'נוסף לרשימה (${formProvider.pendingCount} ממתינים)',
+            textDirection: TextDirection.rtl,
+          ),
+          backgroundColor: Colors.blue,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleSave(FormProvider formProvider) async {
+    // If batch mode, use batch save
+    if (formProvider.hasPendingRecords) {
+      final totalToSave = formProvider.pendingCount + 
+                          (formProvider.isCurrentRecordValid() ? 1 : 0);
+      
+      final shouldSave = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text(
+            'אישור שמירה',
+            textDirection: TextDirection.rtl,
+          ),
+          content: Text(
+            'האם לשמור $totalToSave רשומות?',
+            textDirection: TextDirection.rtl,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('שמור הכל'),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldSave == true) {
+        final success = await formProvider.saveBatchRecords(_sheetsService);
+        
+        if (mounted) {
+          if (success) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '✅ $totalToSave רשומות נשמרו בהצלחה',
+                  textDirection: TextDirection.rtl,
+                ),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          } else if (formProvider.error != null) {
+            // Show detailed error for partial failures
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text(
+                  'תוצאות שמירה',
+                  textDirection: TextDirection.rtl,
+                ),
+                content: Text(
+                  formProvider.error!,
+                  textDirection: TextDirection.rtl,
+                ),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('אישור'),
+                  ),
+                ],
+              ),
+            );
+          }
+        }
+      }
+    } else {
+      // Single record save (existing logic)
+      await _saveRecord(formProvider);
+    }
+  }
+
+  void _editPendingRecord(FormProvider formProvider, int index) {
+    formProvider.loadPendingRecord(index);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'עריכת רשומה ${index + 1}',
+          textDirection: TextDirection.rtl,
+        ),
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _removePendingRecord(FormProvider formProvider, StudentRecord record) {
+    formProvider.removePendingRecord(record);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${record.studentName} הוסר מהרשימה',
+          textDirection: TextDirection.rtl,
+        ),
+        backgroundColor: Colors.orange,
+        action: SnackBarAction(
+          label: 'בטל',
+          onPressed: () => formProvider.undoRemove(),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _saveRecord(FormProvider formProvider) async {

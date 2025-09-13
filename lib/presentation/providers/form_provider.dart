@@ -11,11 +11,25 @@ class FormProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _isUpdateMode = false;
+  
+  // Batch mode fields
+  final List<StudentRecord> _pendingRecords = [];
+  bool _isBatchMode = false;
+  int _currentBatchIndex = -1; // -1 means editing new record
+  StudentRecord? _removedRecord; // For undo functionality
 
   StudentRecord get currentRecord => _currentRecord;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isUpdateMode => _isUpdateMode;
+  
+  // Batch mode getters
+  List<StudentRecord> get pendingRecords => List.unmodifiable(_pendingRecords);
+  bool get isBatchMode => _isBatchMode && _pendingRecords.isNotEmpty;
+  int get pendingCount => _pendingRecords.length;
+  bool get hasPendingRecords => _pendingRecords.isNotEmpty;
+  int get currentBatchIndex => _currentBatchIndex;
+  bool get isEditingPendingRecord => _currentBatchIndex >= 0;
 
   Future<void> initializeWithDefaults(GoogleSheetsService sheetsService) async {
     _setLoading(true);
@@ -173,13 +187,25 @@ class FormProvider extends ChangeNotifier {
     }
   }
 
-  void resetForm() {
+  void resetForm({bool keepBatchData = false}) {
     // Format today's date as DD/MM/YYYY
     final now = DateTime.now();
     final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
-    _currentRecord = StudentRecord.empty().copyWith(date: today);
+    
+    if (keepBatchData && _currentRecord.className.isNotEmpty) {
+      // Keep date, class name, and class number for batch mode
+      _currentRecord = StudentRecord.empty().copyWith(
+        date: _currentRecord.date.isNotEmpty ? _currentRecord.date : today,
+        className: _currentRecord.className,
+        classNumber: _currentRecord.classNumber,
+      );
+    } else {
+      _currentRecord = StudentRecord.empty().copyWith(date: today);
+    }
+    
     _originalRecord = null;
     _isUpdateMode = false;
+    _currentBatchIndex = -1;
     _setError(null);
     notifyListeners();
   }
@@ -219,6 +245,177 @@ class FormProvider extends ChangeNotifier {
   void _setError(String? error) {
     _error = error;
     notifyListeners();
+  }
+
+  // ===== BATCH MODE METHODS =====
+  
+  bool isCurrentRecordValid() {
+    return _currentRecord.studentName.trim().isNotEmpty &&
+           _currentRecord.className.trim().isNotEmpty &&
+           _currentRecord.classNumber > 0;
+  }
+  
+  Future<bool> addToQueueAndMoveNext() async {
+    // Validate current record
+    if (!isCurrentRecordValid()) {
+      _setError('יש למלא את כל השדות הנדרשים');
+      return false;
+    }
+    
+    // Calculate score for classes 1 and 7
+    var recordToAdd = _currentRecord;
+    if (recordToAdd.classNumber == 1 || recordToAdd.classNumber == 7) {
+      recordToAdd = recordToAdd.copyWith(personalGoal: 0);
+    }
+    recordToAdd = recordToAdd.withCalculatedScore();
+    
+    if (_currentBatchIndex == -1) {
+      // New record - add to queue
+      _pendingRecords.add(recordToAdd);
+      debugPrint('[BATCH] Added new record to queue: ${recordToAdd.studentName}');
+    } else {
+      // Editing existing pending record - update it
+      _pendingRecords[_currentBatchIndex] = recordToAdd;
+      debugPrint('[BATCH] Updated pending record at index $_currentBatchIndex');
+    }
+    
+    // Enter batch mode
+    _isBatchMode = true;
+    
+    // Reset form keeping batch data
+    resetForm(keepBatchData: true);
+    
+    return true;
+  }
+  
+  Future<bool> saveBatchRecords(GoogleSheetsService sheetsService) async {
+    // Check if we have anything to save
+    if (_pendingRecords.isEmpty && !isCurrentRecordValid()) {
+      _setError('אין רשומות לשמירה');
+      return false;
+    }
+    
+    _setLoading(true);
+    _setError(null);
+    
+    try {
+      // Add current record if valid
+      final recordsToSave = List<StudentRecord>.from(_pendingRecords);
+      if (isCurrentRecordValid()) {
+        var currentToSave = _currentRecord;
+        if (currentToSave.classNumber == 1 || currentToSave.classNumber == 7) {
+          currentToSave = currentToSave.copyWith(personalGoal: 0);
+        }
+        recordsToSave.add(currentToSave.withCalculatedScore());
+      }
+      
+      debugPrint('[BATCH] Saving ${recordsToSave.length} records...');
+      
+      // Initialize multi-destination service
+      final multiService = MultiDestinationSheetsService(
+        sheetsService.authService,
+        sheetsService,
+      );
+      
+      _setError('אתחול שירות חשבון...');
+      await multiService.initialize();
+      _setError(null);
+      
+      // Save all records
+      int successCount = 0;
+      final List<String> errors = [];
+      
+      for (int i = 0; i < recordsToSave.length; i++) {
+        try {
+          debugPrint('[BATCH] Saving record ${i + 1}/${recordsToSave.length}: ${recordsToSave[i].studentName}');
+          final success = await multiService.saveToMultipleDestinations(recordsToSave[i]);
+          
+          if (success) {
+            successCount++;
+          } else {
+            errors.add('${recordsToSave[i].studentName}: שגיאה בשמירה');
+          }
+        } catch (e) {
+          errors.add('${recordsToSave[i].studentName}: $e');
+          debugPrint('[BATCH] Error saving record: $e');
+        }
+      }
+      
+      // Handle results
+      if (successCount > 0) {
+        // Clear batch on any success
+        _pendingRecords.clear();
+        _isBatchMode = false;
+        _currentBatchIndex = -1;
+        resetForm();
+        
+        if (errors.isNotEmpty) {
+          // Partial success
+          _setError('נשמרו $successCount מתוך ${recordsToSave.length} רשומות\n${errors.join('\n')}');
+          return false;
+        }
+        
+        debugPrint('[BATCH] All records saved successfully');
+        return true;
+      } else {
+        // Complete failure
+        _setError('שגיאה בשמירת הרשומות:\n${errors.join('\n')}');
+        return false;
+      }
+      
+    } catch (e) {
+      _setError('שגיאה בשמירת הרשומות: ${e.toString()}');
+      debugPrint('[BATCH] Fatal error: $e');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  void loadPendingRecord(int index) {
+    if (index >= 0 && index < _pendingRecords.length) {
+      _currentRecord = _pendingRecords[index];
+      _currentBatchIndex = index;
+      _isUpdateMode = false; // Not updating from sheets, just editing pending
+      notifyListeners();
+      debugPrint('[BATCH] Loaded pending record at index $index for editing');
+    }
+  }
+  
+  void removePendingRecord(StudentRecord record) {
+    final index = _pendingRecords.indexOf(record);
+    if (index != -1) {
+      _removedRecord = record;
+      _pendingRecords.removeAt(index);
+      
+      // Exit batch mode if no more pending
+      if (_pendingRecords.isEmpty) {
+        _isBatchMode = false;
+        _currentBatchIndex = -1;
+      }
+      
+      notifyListeners();
+      debugPrint('[BATCH] Removed pending record: ${record.studentName}');
+    }
+  }
+  
+  void undoRemove() {
+    if (_removedRecord != null) {
+      _pendingRecords.add(_removedRecord!);
+      _isBatchMode = true;
+      _removedRecord = null;
+      notifyListeners();
+      debugPrint('[BATCH] Restored removed record');
+    }
+  }
+  
+  void clearBatch() {
+    _pendingRecords.clear();
+    _isBatchMode = false;
+    _currentBatchIndex = -1;
+    _removedRecord = null;
+    resetForm();
+    debugPrint('[BATCH] Cleared all pending records');
   }
 
 }

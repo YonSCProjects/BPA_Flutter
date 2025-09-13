@@ -15,7 +15,7 @@ This document outlines the complete implementation plan for transitioning BPApp 
 9. [Security Considerations](#security-considerations)
 10. [Future Maintenance](#future-maintenance)
 
-## Architecture Overview
+bash(flutter logs)## Architecture Overview
 
 ### Current Architecture
 ```
