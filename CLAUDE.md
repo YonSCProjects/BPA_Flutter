@@ -8,16 +8,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Hebrew-language cross-platform mobile application for teachers to track student performance and attendance through structured input fields with automatic Google Sheets integration. Each user maintains their own private "BPApp" spreadsheet with real-time score calculation and smart record matching.
 
 ## Current Status (January 2025)
-✅ **ENTERPRISE FEATURES ACTIVE** - Firebase integration with service account and dynamic dropdowns
-✅ **Phase 1 Complete**: Service account integration for centralized spreadsheet management
-✅ **Phase 2 Complete**: Firebase backend with Firestore collections for educators/students
-✅ **Phase 3 Complete**: Dynamic dropdowns powered by Firebase data
-✅ **WEB ADMIN PORTAL DEPLOYED**: Full CRUD interface live at https://bpapp-firebase-485c1.web.app
-✅ **FIREBASE SECURITY RULES**: Updated to allow public read for Flutter app, authenticated write for admin
-✅ **NEW SCORING SYSTEM**: Updated point ranges (0-7 max for classes 2-6, 0-6 for classes 1 and 7)
-📋 **See `CURRENT_INFRASTRUCTURE.md`** for complete existing configuration details
-📘 **See `WEB_ADMIN_GUIDE.md`** for admin portal documentation and deployment instructions
-🚀 **Current branch**: `service-account-final` with all enterprise features
+✅ **PRODUCTION READY** - All features complete and tested
+✅ **BATCH SCORING**: Next student functionality with queue management  
+✅ **SERVICE ACCOUNT**: Centralized educator spreadsheet management working
+✅ **FIREBASE INTEGRATION**: Dynamic dropdowns with smart filtering by class
+✅ **MULTI-DESTINATION SAVES**: Records save to both teacher and educator sheets
+✅ **WEB ADMIN PORTAL**: Live at https://bpapp-firebase-485c1.web.app
+✅ **DEPLOYMENT READY**: Release APK built (24.8MB)
+📋 **See `DEPLOYMENT_GUIDE.md`** for deployment instructions and options
+📘 **See `WEB_ADMIN_GUIDE.md`** for admin portal documentation
+🚀 **Current branch**: `service-account-final` - READY FOR DEPLOYMENT
 
 ## Critical Project Information
 - **Firebase Project**: `bpapp-firebase-485c1` (DO NOT create new)
@@ -44,9 +44,9 @@ Hebrew-language cross-platform mobile application for teachers to track student 
 5. **Offline-first SQLite** with background sync
 6. **4-field record matching** for updates
 7. **Multi-destination saving** to educator sheets with mappings
-8. **Spreadsheet protection** (read-only, app-only edit)
+8. **Batch scoring mode** with "תלמיד/ה הבא/ה" button
 9. **Firebase Firestore** backend with educators/students collections
-10. **Dynamic dropdowns** for student and educator selection
+10. **Dynamic dropdowns** with smart filtering (students by selected class)
 11. **Enterprise configuration** with phase-based feature flags
 
 ## Scoring System Details
@@ -117,14 +117,14 @@ BPA_Flutter/
     └── lib/                     # Firebase config
 ```
 
-## Enterprise Features Status
-All enterprise features are now implemented and active:
-1. ✅ **Service Account Integration** - Centralized spreadsheet management
-2. ✅ **Firebase Backend** - Student/educator data with dropdown menus  
-3. ✅ **Dynamic Dropdowns** - Firebase-powered student/educator selection
-4. ✅ **Multi-destination Sheets** - Automatic saving to educator sheets
-5. ✅ **Web Admin Portal** - Full CRUD interface for Firebase collections
-6. ✅ **Bulk Import System** - CSV upload for all collections
+## Latest Features (January 2025)
+All features implemented and tested:
+1. ✅ **Batch Scoring** - Queue multiple students with "next" button
+2. ✅ **Smart Filtering** - Students filtered by selected class
+3. ✅ **Service Account** - Centralized educator spreadsheet management
+4. ✅ **Multi-destination Saves** - Automatic saving to both sheets
+5. ✅ **Web Admin Portal** - Full CRUD interface for Firebase data
+6. ✅ **Gender-Inclusive UI** - Updated Hebrew text throughout
 
 ## Important Reminders
 - ✅ Authentication and APIs are WORKING - don't break them
@@ -134,14 +134,15 @@ All enterprise features are now implemented and active:
 - ✅ Keep Hebrew RTL support throughout
 
 ## Documentation Files
+- `DEPLOYMENT_GUIDE.md` - Complete deployment instructions and options
 - `CURRENT_INFRASTRUCTURE.md` - Detailed existing configuration
-- `ENTERPRISE_FEATURES_PLAN.md` - Next phase implementation plan
+- `WEB_ADMIN_GUIDE.md` - Admin portal documentation
 - `FUTURE_WORK.md` - Long-term improvements roadmap
 
 ## Git Workflow
 Claude Code manages all version control. Current branch: `service-account-final`
 Repository: https://github.com/YonSCProjects/BPA_Flutter
-**Latest APK**: Release build ready at `build/app/outputs/flutter-apk/app-release.apk` (24.6MB)
+**Latest APK**: Release build ready at `build/app/outputs/flutter-apk/app-release.apk` (24.8MB)
 
 ## Testing Credentials
 - Google Account: yon.level@gmail.com (configured as test user)
