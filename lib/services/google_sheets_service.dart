@@ -9,7 +9,7 @@ import 'google_auth_service.dart';
 import 'local_storage_service.dart';
 import 'educator_initialization_service.dart';
 import 'service_account_sheets_service.dart';
-import 'backup_setup_service.dart';
+// import 'backup_setup_service.dart'; // Removed - backup feature disabled
 
 class GoogleSheetsService extends ChangeNotifier {
   static const String spreadsheetName = 'BPApp';
@@ -237,8 +237,7 @@ class GoogleSheetsService extends ChangeNotifier {
       
       debugPrint('Created new spreadsheet: $_spreadsheetId');
       
-      // Offer backup setup for new spreadsheets
-      await _offerBackupSetup();
+      // Backup setup removed - no longer adding instructions sheet
     } catch (e) {
       throw Exception('שגיאה ביצירת גיליון אלקטרוני: ${e.toString()}');
     }
@@ -1306,34 +1305,8 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   /// Offer backup setup for new spreadsheets
-  Future<void> _offerBackupSetup() async {
-    try {
-      if (_spreadsheetId == null) return;
-      
-      final backupSetupService = BackupSetupService(_authService);
-      
-      // Check if we should offer backup setup
-      final shouldOffer = await backupSetupService.shouldOfferBackupSetup();
-      if (!shouldOffer) return;
-      
-      // Automatically set up backup instructions sheet
-      debugPrint('📋 [SHEETS] Setting up backup instructions for new spreadsheet');
-      final success = await backupSetupService.setupAutomaticBackups(_spreadsheetId!);
-      
-      if (success) {
-        debugPrint('✅ [SHEETS] Backup instructions added to spreadsheet');
-        _recoveryMessage = 'גיליון חדש נוצר עם הוראות להגדרת גיבויים אוטומטיים';
-        notifyListeners();
-      }
-      
-      // Mark that we've offered
-      await backupSetupService.markBackupSetupOffered();
-      
-    } catch (e) {
-      debugPrint('⚠️ [SHEETS] Error setting up backup: $e');
-      // Don't fail spreadsheet creation if backup setup fails
-    }
-  }
+  // Backup setup removed - no longer adding instructions sheet
+  // Future<void> _offerBackupSetup() async { /* Removed */ }
 
   @override
   void dispose() {
