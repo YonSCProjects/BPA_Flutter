@@ -14,6 +14,7 @@ class FirebaseDropdown extends StatefulWidget {
   final String? value;
   final Function(String?) onChanged;
   final bool isRequired;
+  final String? filterByEducator;  // New parameter for filtering students
 
   const FirebaseDropdown({
     Key? key,
@@ -22,6 +23,7 @@ class FirebaseDropdown extends StatefulWidget {
     this.value,
     required this.onChanged,
     this.isRequired = false,
+    this.filterByEducator,  // Optional filter
   }) : super(key: key);
 
   @override
@@ -42,7 +44,8 @@ class _FirebaseDropdownState extends State<FirebaseDropdown> {
   @override
   void didUpdateWidget(FirebaseDropdown oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.fieldType != widget.fieldType) {
+    if (oldWidget.fieldType != widget.fieldType || 
+        oldWidget.filterByEducator != widget.filterByEducator) {
       _loadData();
     }
   }
@@ -78,8 +81,16 @@ class _FirebaseDropdownState extends State<FirebaseDropdown> {
           isLoading = false;
         });
       } else if (widget.fieldType == FirebaseFieldType.student) {
-        // Load all students
-        final students = firebaseService.cachedStudents;
+        // Load all students or filter by educator if specified
+        var students = firebaseService.cachedStudents;
+        
+        // Apply filter if educator is specified
+        if (widget.filterByEducator != null && widget.filterByEducator!.isNotEmpty) {
+          students = students.where((s) => 
+            s.educatorName == widget.filterByEducator
+          ).toList();
+        }
+        
         setState(() {
           items = students
               .map((s) => DropdownItem(
@@ -180,7 +191,11 @@ class _FirebaseDropdownState extends State<FirebaseDropdown> {
                           horizontal: 16,
                           vertical: 12,
                         ),
-                        hintText: 'בחר ${widget.label}',
+                        hintText: widget.fieldType == FirebaseFieldType.student 
+                            ? 'בחר/י תלמיד/ה'
+                            : widget.fieldType == FirebaseFieldType.educator
+                            ? 'בחר/י כיתה'
+                            : 'בחר ${widget.label}',
                         hintStyle: TextStyle(
                           color: Colors.grey.shade500,
                           fontSize: 14,

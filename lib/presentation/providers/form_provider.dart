@@ -169,13 +169,22 @@ class FormProvider extends ChangeNotifier {
       _setError(null);
       
       // Use multi-destination service which handles both primary and educator sheets
+      debugPrint('[FORM] Calling saveToMultipleDestinations...');
       final success = await multiService.saveToMultipleDestinations(recordToSave);
+      debugPrint('[FORM] saveToMultipleDestinations returned: $success');
       
       if (success) {
-        debugPrint('Record saved successfully');
+        debugPrint('[FORM] Record saved successfully');
+        resetForm();  // Clear the form after successful save
         return true;
       } else {
-        _setError('שגיאה בשמירת הרשומה');
+        debugPrint('[FORM] Save failed - checking for errors');
+        if (sheetsService.error != null) {
+          debugPrint('[FORM] Sheets service error: ${sheetsService.error}');
+          _setError(sheetsService.error);
+        } else {
+          _setError('שגיאה בשמירת הרשומה');
+        }
         return false;
       }
     } catch (e) {

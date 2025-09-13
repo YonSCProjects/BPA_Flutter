@@ -420,14 +420,6 @@ class _StudentFormPageState extends State<StudentFormPage> {
       key: _formKey,
       child: Column(
         children: [
-          // Show read-only banner for new users
-          if (AppConfig.useServiceAccount)
-            ReadOnlyBanner(
-              onDismiss: () {
-                // You could store a preference to not show again
-                setState(() {});
-              },
-            ),
           // Show recovery message if available
           Consumer<GoogleSheetsService>(
             builder: (context, sheetsService, child) {
@@ -481,9 +473,9 @@ class _StudentFormPageState extends State<StudentFormPage> {
                 children: [
                   _buildDateField(formProvider),
                   const SizedBox(height: 16),
-                  _buildStudentNameField(formProvider),
-                  const SizedBox(height: 16),
                   _buildClassNameField(formProvider),
+                  const SizedBox(height: 16),
+                  _buildStudentNameField(formProvider),
                   const SizedBox(height: 16),
                   _buildClassNumberField(formProvider),
                   const SizedBox(height: 24),
@@ -524,6 +516,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
         label: 'שם התלמיד',
         fieldType: FirebaseFieldType.student,
         value: formProvider.currentRecord.studentName,
+        filterByEducator: formProvider.currentRecord.className, // Filter by selected class
         onChanged: (value) {
           formProvider.updateField('studentName', value ?? '');
           _checkForExistingRecord(formProvider);
@@ -562,6 +555,10 @@ class _StudentFormPageState extends State<StudentFormPage> {
         value: formProvider.currentRecord.className,
         onChanged: (value) {
           formProvider.updateField('className', value ?? '');
+          // Clear student name when class changes to avoid invalid selections
+          if (value != formProvider.currentRecord.className) {
+            formProvider.updateField('studentName', '');
+          }
           _checkForExistingRecord(formProvider);
         },
         isRequired: true,

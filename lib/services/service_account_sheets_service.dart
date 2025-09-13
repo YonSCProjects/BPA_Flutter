@@ -1039,7 +1039,7 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       }
       
       // Save the record (service account owns the sheet so has full access)
-      final success = await saveToSpreadsheetId(spreadsheetId, record);
+      final success = await _saveRecordToSpreadsheet(spreadsheetId, record);
       
       if (success) {
         _logDebug('✅ Record saved successfully');
@@ -1083,7 +1083,7 @@ class ServiceAccountSheetsService extends ChangeNotifier {
           }
           
           if (educatorSpreadsheetId != null) {
-            await saveToSpreadsheetId(educatorSpreadsheetId, record);
+            await _saveRecordToSpreadsheet(educatorSpreadsheetId, record);
             _logDebug('✅ Saved to educator spreadsheet');
           }
         }

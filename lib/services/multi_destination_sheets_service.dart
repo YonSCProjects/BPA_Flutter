@@ -50,10 +50,21 @@ class MultiDestinationSheetsService extends ChangeNotifier {
       
       // Step 1: Always save to the primary teacher's spreadsheet FIRST
       debugPrint('💾 [MULTI-SAVE] Step 1: Saving to teacher\'s primary spreadsheet...');
-      final primarySaved = await _sheetsService.saveRecord(record);
+      debugPrint('📝 [MULTI-SAVE] Record details: ${record.studentName} - ${record.className}');
+      
+      bool primarySaved = false;
+      try {
+        primarySaved = await _sheetsService.saveRecord(record);
+        debugPrint('✅ [MULTI-SAVE] Primary save returned: $primarySaved');
+      } catch (e, stackTrace) {
+        debugPrint('❌❌❌ [MULTI-SAVE] Exception during primary save: $e');
+        debugPrint('📋 [MULTI-SAVE] Stack trace: $stackTrace');
+        return false;
+      }
       
       if (!primarySaved) {
         debugPrint('❌ [MULTI-SAVE] Failed to save to primary teacher spreadsheet');
+        debugPrint('📋 [MULTI-SAVE] Sheets service error: ${_sheetsService.error}');
         return false;
       }
       

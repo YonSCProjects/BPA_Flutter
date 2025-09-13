@@ -9,6 +9,7 @@ import 'google_auth_service.dart';
 import 'local_storage_service.dart';
 import 'educator_initialization_service.dart';
 import 'service_account_sheets_service.dart';
+import 'backup_setup_service.dart';
 
 class GoogleSheetsService extends ChangeNotifier {
   static const String spreadsheetName = 'BPApp';
@@ -263,6 +264,9 @@ class GoogleSheetsService extends ChangeNotifier {
       await _protectSpreadsheet();
       
       debugPrint('Created new spreadsheet: $_spreadsheetId');
+      
+      // Offer backup setup for new spreadsheets
+      await _offerBackupSetup();
     } catch (e) {
       throw Exception('שגיאה ביצירת גיליון אלקטרוני: ${e.toString()}');
     }
@@ -716,22 +720,37 @@ class GoogleSheetsService extends ChangeNotifier {
       // Step 2: Attempt online sync
       bool onlineSuccess = false;
       
-      // Use service account if enabled
-      if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
-        debugPrint('🔐 [SAVE] Using SERVICE ACCOUNT for save operation');
+      // First ensure the teacher has their own spreadsheet using OAuth
+      if (_spreadsheetId == null) {
+        debugPrint('📋 [SAVE] Teacher spreadsheet not found, creating with OAuth...');
+        await _findExistingSpreadsheet();
+        
+        if (_spreadsheetId == null) {
+          await _createSpreadsheet();
+        }
+        
+        if (_spreadsheetId != null && _sheetId == null) {
+          await _getSheetId();
+        }
+      }
+      
+      // Now save using the appropriate method
+      if (_sheetsApi != null && _spreadsheetId != null) {
+        // Always use OAuth for the teacher's own spreadsheet
+        debugPrint('👤 [SAVE] Using USER OAuth for teacher\'s own spreadsheet');
+        try {
+          onlineSuccess = await _originalSaveRecord(recordWithScore);
+        } catch (e) {
+          debugPrint('❌ [SAVE] Error in user-owned save: $e');
+        }
+      } else if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
+        // Fallback to service account if OAuth fails
+        debugPrint('🔐 [SAVE] OAuth unavailable, using SERVICE ACCOUNT as fallback');
         final userEmail = _authService.currentUser?.email;
         final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
         
         if (userEmail != null) {
           onlineSuccess = await _serviceAccountService.saveRecordForUser(recordWithScore, userEmail, userName);
-        }
-      } else if (_sheetsApi != null && _spreadsheetId != null) {
-        // Fallback to original user-owned save
-        debugPrint('👤 [SAVE] Using USER account for save operation (fallback)');
-        try {
-          onlineSuccess = await _originalSaveRecord(recordWithScore);
-        } catch (e) {
-          debugPrint('❌ [SAVE] Error in user-owned save: $e');
         }
       }
       
@@ -752,18 +771,6 @@ class GoogleSheetsService extends ChangeNotifier {
           await _localStorageService.markAsPendingSync(recordWithScore);
         }
         debugPrint('⏳ [SAVE] Online sync failed, marked for retry');
-      }
-        } catch (e) {
-          debugPrint('❌ [SAVE] Online sync error: $e');
-          if (localSaveSuccess) {
-            await _localStorageService.markAsPendingSync(recordWithScore);
-          }
-        }
-      } else {
-        debugPrint('⚠️ [SAVE] No online connection, data saved locally only');
-        if (localSaveSuccess) {
-          await _localStorageService.markAsPendingSync(recordWithScore);
-        }
       }
 
       // Step 3: Return success based on strategy
@@ -1320,6 +1327,36 @@ class GoogleSheetsService extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ [SYNC] Manual sync failed: $e');
       return false;
+    }
+  }
+
+  /// Offer backup setup for new spreadsheets
+  Future<void> _offerBackupSetup() async {
+    try {
+      if (_spreadsheetId == null) return;
+      
+      final backupSetupService = BackupSetupService(_authService);
+      
+      // Check if we should offer backup setup
+      final shouldOffer = await backupSetupService.shouldOfferBackupSetup();
+      if (!shouldOffer) return;
+      
+      // Automatically set up backup instructions sheet
+      debugPrint('📋 [SHEETS] Setting up backup instructions for new spreadsheet');
+      final success = await backupSetupService.setupAutomaticBackups(_spreadsheetId!);
+      
+      if (success) {
+        debugPrint('✅ [SHEETS] Backup instructions added to spreadsheet');
+        _recoveryMessage = 'גיליון חדש נוצר עם הוראות להגדרת גיבויים אוטומטיים';
+        notifyListeners();
+      }
+      
+      // Mark that we've offered
+      await backupSetupService.markBackupSetupOffered();
+      
+    } catch (e) {
+      debugPrint('⚠️ [SHEETS] Error setting up backup: $e');
+      // Don't fail spreadsheet creation if backup setup fails
     }
   }
 
