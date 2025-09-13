@@ -12,7 +12,7 @@ import '../widgets/firebase_dropdown.dart';
 import '../widgets/hebrew_number_picker.dart';
 import '../widgets/hebrew_date_picker.dart';
 import '../widgets/score_display.dart';
-import '../widgets/read_only_indicator.dart';
+// import '../widgets/read_only_indicator.dart'; // Removed - no longer showing read-only indicator
 import '../providers/form_provider.dart';
 import '../../core/educator_mappings.dart';
 import '../../config/app_config.dart';
@@ -251,12 +251,6 @@ class _StudentFormPageState extends State<StudentFormPage> {
         title: const Text('תכנית התנהגותית - ניקוד'),
         // Using theme's default app bar color for better contrast
         actions: [
-          // Show read-only indicator when service account owns spreadsheets
-          if (AppConfig.useServiceAccount) 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Center(child: ReadOnlyIndicator()),
-            ),
           Consumer<GoogleAuthService>(
             builder: (context, authService, child) {
               if (authService.isAuthenticated) {
