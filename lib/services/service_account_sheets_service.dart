@@ -61,6 +61,15 @@ class ServiceAccountSheetsService extends ChangeNotifier {
   String? get error => _error;
   bool get isEnabled => AppConfig.useServiceAccount && !AppConfig.emergencyDisable;
   String? get serviceAccountEmail => _serviceAccountEmail;
+
+  /// Get the authenticated client for use by other services
+  Future<AuthClient?> getAuthenticatedClient() async {
+    if (!_isInitialized || _authClient == null) {
+      _logDebug('⚠️ Service account not initialized or auth client not available');
+      return null;
+    }
+    return _authClient;
+  }
   
   /// Initialize service account authentication
   Future<bool> initialize() async {

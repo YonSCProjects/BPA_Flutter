@@ -9,6 +9,7 @@ import 'google_auth_service.dart';
 import 'local_storage_service.dart';
 import 'educator_initialization_service.dart';
 import 'service_account_sheets_service.dart';
+import 'summary_sheet_service.dart';
 // import 'backup_setup_service.dart'; // Removed - backup feature disabled
 
 class GoogleSheetsService extends ChangeNotifier {
@@ -34,6 +35,7 @@ class GoogleSheetsService extends ChangeNotifier {
   final LocalStorageService _localStorageService = LocalStorageService();
   late final EducatorInitializationService _educatorInitService;
   final ServiceAccountSheetsService _serviceAccountService = ServiceAccountSheetsService();
+  SummarySheetService? _summarySheetService;
   
   /// Access to the authentication service for multi-destination saving
   GoogleAuthService get authService => _authService;
@@ -194,6 +196,12 @@ class GoogleSheetsService extends ChangeNotifier {
         if (isOwnedByCurrentUser) {
           _spreadsheetId = file.id!;
           debugPrint('✅ [INIT] Found existing spreadsheet owned by user: $_spreadsheetId');
+
+          // Initialize summary sheet service for existing spreadsheet
+          if (_sheetsApi != null) {
+            _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+            await _summarySheetService!.ensureSummarySheetExists();
+          }
         } else {
           debugPrint('⚠️ [INIT] Found spreadsheet but not owned by current user - will create new one');
         }
@@ -231,12 +239,16 @@ class GoogleSheetsService extends ChangeNotifier {
 
       final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
       _spreadsheetId = response.spreadsheetId!;
-      
+
       await _addHeaders();
       await _protectSpreadsheet();
-      
-      debugPrint('Created new spreadsheet: $_spreadsheetId');
-      
+
+      // Initialize summary sheet service and create summary sheet
+      _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+      await _summarySheetService!.ensureSummarySheetExists();
+
+      debugPrint('Created new spreadsheet with summary sheet: $_spreadsheetId');
+
       // Backup setup removed - no longer adding instructions sheet
     } catch (e) {
       throw Exception('שגיאה ביצירת גיליון אלקטרוני: ${e.toString()}');
@@ -334,11 +346,17 @@ class GoogleSheetsService extends ChangeNotifier {
       
       // Set the recovered spreadsheet ID
       _spreadsheetId = fileId;
-      
+
       debugPrint('Successfully recovered BPApp spreadsheet from trash: $fileId');
-      
+
       // Apply protection to recovered spreadsheet
       await _protectSpreadsheet();
+
+      // Initialize summary sheet service for recovered spreadsheet
+      if (_sheetsApi != null) {
+        _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+        await _summarySheetService!.ensureSummarySheetExists();
+      }
       
       // Set recovery success message
       _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! כל הנתונים שלך נשמרו.';
@@ -1011,6 +1029,11 @@ class GoogleSheetsService extends ChangeNotifier {
         valueInputOption: 'RAW',
       );
 
+      // Update summary sheet
+      if (_summarySheetService != null) {
+        await _summarySheetService!.mirrorRecordToSummary(record);
+      }
+
       debugPrint('✅ [SAVE] Inserted record at position $rowPosition');
       return true;
     } catch (e) {
@@ -1041,6 +1064,11 @@ class GoogleSheetsService extends ChangeNotifier {
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
       );
+
+      // Update summary sheet
+      if (_summarySheetService != null) {
+        await _summarySheetService!.mirrorRecordToSummary(record);
+      }
 
       debugPrint('✅ [SAVE] Successfully appended record to end');
       return true;
@@ -1083,7 +1111,12 @@ class GoogleSheetsService extends ChangeNotifier {
         range,
         valueInputOption: 'RAW',
       );
-      
+
+      // Update summary sheet
+      if (_summarySheetService != null) {
+        await _summarySheetService!.mirrorRecordToSummary(record);
+      }
+
       debugPrint('✅ [SAVE] Successfully saved using fallback method at row $nextRow');
       return true;
       

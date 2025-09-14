@@ -4,6 +4,7 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'google_auth_service.dart';
 import 'google_sheets_service.dart';
 import 'service_account_sheets_service.dart';
+import 'summary_sheet_service.dart';
 import '../data/models/student_record.dart';
 import '../core/educator_mappings.dart';
 import '../config/app_config.dart';
@@ -543,18 +544,28 @@ class MultiDestinationSheetsService extends ChangeNotifier {
   /// Save record to a specific spreadsheet
   Future<bool> _saveToSpreadsheet(StudentRecord record, String spreadsheetId, String educatorEmail) async {
     try {
+      bool saveSuccess = false;
+
       // Use service account if available for educator spreadsheets
       if (_serviceAccountService.isInitialized && AppConfig.useServiceAccount) {
         debugPrint('🔐 [MULTI-SAVE] Using SERVICE ACCOUNT to save to educator spreadsheet');
         debugPrint('🔐 [MULTI-SAVE] Spreadsheet ID: $spreadsheetId');
         debugPrint('🔐 [MULTI-SAVE] Educator Email: $educatorEmail');
-        
+
         // Use the new method that takes spreadsheet ID directly
-        return await _serviceAccountService.saveRecordToSpreadsheetById(
+        saveSuccess = await _serviceAccountService.saveRecordToSpreadsheetById(
           record,
           spreadsheetId,
           educatorEmail,
         );
+
+        // Update summary sheet if save was successful
+        if (saveSuccess) {
+          debugPrint('📋 [MULTI-SAVE] Updating educator summary sheet...');
+          await _updateEducatorSummarySheet(record, spreadsheetId);
+        }
+
+        return saveSuccess;
       }
       
       // Fallback to OAuth
@@ -665,14 +676,55 @@ class MultiDestinationSheetsService extends ChangeNotifier {
       // Expected format: DD/MM/YYYY
       final parts = dateStr.split('/');
       if (parts.length != 3) return null;
-      
+
       final day = int.parse(parts[0]);
       final month = int.parse(parts[1]);
       final year = int.parse(parts[2]);
-      
+
       return DateTime(year, month, day);
     } catch (e) {
       return null;
+    }
+  }
+
+  /// Update the educator's summary sheet with the new record
+  Future<void> _updateEducatorSummarySheet(StudentRecord record, String spreadsheetId) async {
+    try {
+      sheets.SheetsApi? sheetsApi;
+
+      // Get the appropriate SheetsApi based on what's available
+      if (_serviceAccountService.isInitialized && AppConfig.useServiceAccount) {
+        // Use service account's sheets API
+        final client = await _serviceAccountService.getAuthenticatedClient();
+        if (client != null) {
+          sheetsApi = sheets.SheetsApi(client);
+        }
+      } else {
+        // Use OAuth client
+        final client = await _authService.getAuthenticatedClient();
+        if (client != null) {
+          sheetsApi = sheets.SheetsApi(client);
+        }
+      }
+
+      if (sheetsApi == null) {
+        debugPrint('⚠️ [MULTI-SAVE] No sheets API available for summary update');
+        return;
+      }
+
+      // Create a summary sheet service for the educator's spreadsheet
+      final summaryService = SummarySheetService(sheetsApi, spreadsheetId);
+
+      // Ensure summary sheet exists
+      await summaryService.ensureSummarySheetExists();
+
+      // Mirror the record to the summary sheet
+      await summaryService.mirrorRecordToSummary(record);
+
+      debugPrint('✅ [MULTI-SAVE] Educator summary sheet updated successfully');
+    } catch (e) {
+      debugPrint('⚠️ [MULTI-SAVE] Error updating educator summary sheet: $e');
+      // Don't throw - summary sheet errors shouldn't break the main save
     }
   }
 }
