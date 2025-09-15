@@ -9,12 +9,14 @@ Hebrew-language cross-platform mobile application for teachers to track student 
 
 ## Current Status (January 2025)
 ✅ **PRODUCTION READY** - All features complete and tested
-✅ **BATCH SCORING**: Next student functionality with queue management  
+✅ **ATTENDANCE SYSTEM**: Complete attendance tracking with secretary role management
+✅ **LATE ARRIVALS**: Teachers can add students who arrive late with visual indicators
+✅ **BATCH SCORING**: Next student functionality with queue management
 ✅ **SERVICE ACCOUNT**: Centralized educator spreadsheet management working
 ✅ **FIREBASE INTEGRATION**: Dynamic dropdowns with smart filtering by class
 ✅ **MULTI-DESTINATION SAVES**: Records save to both teacher and educator sheets
-✅ **WEB ADMIN PORTAL**: Live at https://bpapp-firebase-485c1.web.app
-✅ **DEPLOYMENT READY**: Release APK built (24.8MB)
+✅ **WEB ADMIN PORTAL**: Live at https://bpapp-firebase-485c1.web.app (permissions fixed)
+✅ **DEPLOYMENT READY**: Release APK built (25.1MB)
 📋 **See `DEPLOYMENT_GUIDE.md`** for deployment instructions and options
 📘 **See `WEB_ADMIN_GUIDE.md`** for admin portal documentation
 🚀 **Current branch**: `service-account-final` - READY FOR DEPLOYMENT
@@ -48,6 +50,13 @@ Hebrew-language cross-platform mobile application for teachers to track student 
 9. **Firebase Firestore** backend with educators/students collections
 10. **Dynamic dropdowns** with smart filtering (students by selected class)
 11. **Enterprise configuration** with phase-based feature flags
+12. **Attendance Tracking System**:
+    - Centralized attendance spreadsheet managed by secretary
+    - Daily attendance submission by teachers
+    - Late arrival tracking with "הוספת תלמידים מאחרים" feature
+    - Visual indicators for late students ("מאחר" badge)
+    - Automatic spreadsheet discovery and sharing with service account
+13. **Web Admin Portal** with full CRUD operations for Firebase data
 
 ## Scoring System Details
 
@@ -119,12 +128,15 @@ BPA_Flutter/
 
 ## Latest Features (January 2025)
 All features implemented and tested:
-1. ✅ **Batch Scoring** - Queue multiple students with "next" button
-2. ✅ **Smart Filtering** - Students filtered by selected class
-3. ✅ **Service Account** - Centralized educator spreadsheet management
-4. ✅ **Multi-destination Saves** - Automatic saving to both sheets
-5. ✅ **Web Admin Portal** - Full CRUD interface for Firebase data
-6. ✅ **Gender-Inclusive UI** - Updated Hebrew text throughout
+1. ✅ **Attendance System** - Complete attendance tracking with secretary role
+2. ✅ **Late Arrivals** - Add students who arrive late with visual indicators
+3. ✅ **Batch Scoring** - Queue multiple students with "next" button
+4. ✅ **Smart Filtering** - Students filtered by selected class
+5. ✅ **Service Account** - Centralized educator spreadsheet management
+6. ✅ **Multi-destination Saves** - Automatic saving to both sheets
+7. ✅ **Web Admin Portal** - Full CRUD interface for Firebase data (permissions fixed)
+8. ✅ **Gender-Inclusive UI** - Updated Hebrew text throughout
+9. ✅ **Multi-role Support** - Users can have multiple roles (educator + secretary)
 
 ## Important Reminders
 - ✅ Authentication and APIs are WORKING - don't break them
@@ -142,7 +154,7 @@ All features implemented and tested:
 ## Git Workflow
 Claude Code manages all version control. Current branch: `service-account-final`
 Repository: https://github.com/YonSCProjects/BPA_Flutter
-**Latest APK**: Release build ready at `build/app/outputs/flutter-apk/app-release.apk` (24.8MB)
+**Latest APK**: Release build ready at `build/app/outputs/flutter-apk/app-release.apk` (25.1MB)
 
 ## Testing Credentials
 - Google Account: yon.level@gmail.com (configured as test user)
