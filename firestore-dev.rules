@@ -2,30 +2,35 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // DEVELOPMENT RULES - Allow public read for testing
-    // WARNING: DO NOT USE IN PRODUCTION
-    
+    // DEVELOPMENT RULES - More permissive for testing
+    // WARNING: SECURE THESE RULES FOR PRODUCTION
+
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
     // Allow public read access to educators, students, and users
     match /educators/{document=**} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAuthenticated();
     }
-    
+
     match /students/{document=**} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAuthenticated();
     }
-    
+
     match /users/{document=**} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAuthenticated();
     }
-    
+
     match /config/{document=**} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAuthenticated();
     }
-    
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;

@@ -49,8 +49,14 @@ export default function StudentsPage() {
         studentsData.push({ id: doc.id, ...doc.data() } as Student);
       });
       setStudents(studentsData);
-    } catch (error) {
-      toast.error('Failed to fetch students');
+    } catch (error: any) {
+      console.error('Error fetching students:', error);
+
+      if (error?.code === 'permission-denied') {
+        toast.error('Permission denied. Check Firebase security rules for students collection.');
+      } else {
+        toast.error(`Failed to fetch students: ${error?.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -84,8 +90,17 @@ export default function StudentsPage() {
       setShowModal(false);
       resetForm();
       fetchStudents();
-    } catch (error) {
-      toast.error('Failed to save student');
+    } catch (error: any) {
+      console.error('Error saving student:', error);
+
+      // Provide more specific error messages
+      if (error?.code === 'permission-denied') {
+        toast.error('Permission denied. Check Firebase security rules.');
+      } else if (error?.code === 'unauthenticated') {
+        toast.error('You need to be logged in to add students.');
+      } else {
+        toast.error(`Failed to save student: ${error?.message || 'Unknown error'}`);
+      }
     }
   };
 
