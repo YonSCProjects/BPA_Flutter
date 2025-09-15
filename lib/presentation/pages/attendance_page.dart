@@ -23,9 +23,12 @@ class _AttendancePageState extends State<AttendancePage> {
   List<String> _availableClasses = [];
   Map<String, List<String>> _classStudents = {}; // Class -> List of students
   Map<String, bool> _attendance = {}; // Student name -> present/absent
+  Map<String, bool> _lateArrivals = {}; // Student name -> is late arrival
   bool _isLoading = false;
   bool _isSubmitting = false;
   String? _userRole;
+  bool _hasSubmittedToday = false; // Track if attendance was already submitted today
+  String _todayDate = DateFormat('dd/MM/yyyy').format(DateTime.now());
 
   @override
   void initState() {
@@ -301,10 +304,10 @@ class _AttendancePageState extends State<AttendancePage> {
         _showSuccess('נוכחות נשלחה בהצלחה!');
         debugPrint('✅ [ATTENDANCE] Submission successful!');
 
-        // Clear selection for next class
+        // Mark as submitted today but keep the class selected for late arrivals
         setState(() {
-          _selectedClass = null;
-          _attendance.clear();
+          _hasSubmittedToday = true;
+          // Don't clear the class or attendance - keep them for late arrivals
         });
       } else {
         final error = _attendanceService.error ?? 'שגיאה לא ידועה';
@@ -337,6 +340,143 @@ class _AttendancePageState extends State<AttendancePage> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _showAddLateStudentsDialog() async {
+    if (_selectedClass == null) {
+      _showError('נא לבחור כיתה תחילה');
+      return;
+    }
+
+    final students = _classStudents[_selectedClass!] ?? [];
+    // Filter out students who are already marked as present
+    final absentStudents = students.where((student) =>
+      !(_attendance[student] ?? false)
+    ).toList();
+
+    if (absentStudents.isEmpty) {
+      _showError('כל התלמידים כבר סומנו כנוכחים');
+      return;
+    }
+
+    // Create a temporary map for late arrivals selection
+    Map<String, bool> tempLateArrivals = {};
+    for (final student in absentStudents) {
+      tempLateArrivals[student] = false;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('הוספת תלמידים מאחרים'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'סמן תלמידים שהגיעו מאוחר:',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: absentStudents.length,
+                    itemBuilder: (context, index) {
+                      final student = absentStudents[index];
+                      return CheckboxListTile(
+                        title: Text(student),
+                        value: tempLateArrivals[student],
+                        onChanged: (value) {
+                          setDialogState(() {
+                            tempLateArrivals[student] = value ?? false;
+                          });
+                        },
+                        secondary: const Icon(
+                          Icons.access_time,
+                          color: Colors.orange,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _submitLateArrivals(tempLateArrivals);
+              },
+              child: const Text('עדכן נוכחות'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitLateArrivals(Map<String, bool> lateArrivals) async {
+    // Filter only selected late students
+    final selectedLateStudents = lateArrivals.entries
+      .where((entry) => entry.value)
+      .map((entry) => entry.key)
+      .toList();
+
+    if (selectedLateStudents.isEmpty) {
+      _showError('לא נבחרו תלמידים');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      // Update attendance for late students
+      for (final student in selectedLateStudents) {
+        _attendance[student] = true;
+        _lateArrivals[student] = true;
+      }
+
+      // Create a new attendance record with late arrival indicator
+      final authService = Provider.of<GoogleAuthService>(context, listen: false);
+      final userEmail = authService.currentUser?.email ?? '';
+
+      final record = AttendanceRecord(
+        date: _todayDate,
+        className: _selectedClass!,
+        studentAttendance: Map.from(_attendance),
+        submittedBy: userEmail,
+        timestamp: DateTime.now(),
+        isLateUpdate: true, // Mark as late update
+        lateArrivals: Map.from(_lateArrivals), // Include late arrival info
+      );
+
+      // Submit the updated attendance
+      final success = await _attendanceService.submitAttendance(record);
+
+      if (success) {
+        _showSuccess('נוכחות עודכנה בהצלחה - נוספו ${selectedLateStudents.length} תלמידים מאחרים');
+        setState(() {
+          _hasSubmittedToday = true;
+        });
+      } else {
+        _showError(_attendanceService.error ?? 'שגיאה בעדכון נוכחות');
+      }
+    } catch (e) {
+      _showError('שגיאה בעדכון נוכחות: $e');
+    } finally {
+      setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -491,12 +631,35 @@ class _AttendancePageState extends State<AttendancePage> {
                                 style: const TextStyle(color: Colors.white),
                               ),
                             ),
-                            title: Text(
-                              studentName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isPresent ? Colors.black : Colors.grey,
-                              ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    studentName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isPresent ? Colors.black : Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                // Show late arrival indicator
+                                if (_lateArrivals[studentName] == true)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade100,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Text(
+                                      'מאחר',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             trailing: Checkbox(
                               value: isPresent,
@@ -510,8 +673,9 @@ class _AttendancePageState extends State<AttendancePage> {
                     ),
             ),
 
-            // Submit button
-            if (_selectedClass != null)
+            // Submit and Late Arrival buttons
+            if (_selectedClass != null) ...[
+              // Submit button
               Padding(
                 padding: const EdgeInsets.only(top: 16, bottom: 8),
                 child: SizedBox(
@@ -541,6 +705,30 @@ class _AttendancePageState extends State<AttendancePage> {
                   ),
                 ),
               ),
+
+              // Add Late Students button
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isSubmitting ? null : _showAddLateStudentsDialog,
+                    icon: const Icon(Icons.person_add, color: Colors.orange),
+                    label: const Text(
+                      'הוספת תלמידים מאחרים',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: Colors.orange, width: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             ],
           ),
         ),
