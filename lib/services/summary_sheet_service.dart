@@ -234,6 +234,20 @@ class SummarySheetService {
             ),
           ),
         ),
+        // Add warning-only protection for summary sheet
+        sheets.Request(
+          addProtectedRange: sheets.AddProtectedRangeRequest(
+            protectedRange: sheets.ProtectedRange(
+              range: sheets.GridRange(
+                sheetId: _summarySheetId,
+                startRowIndex: 0,
+                endRowIndex: 1000, // Protect entire sheet
+              ),
+              description: 'אזהרה: גיליון הסיכום מחושב אוטומטית על ידי אפליקציית BPApp. עריכה ידנית תגרום לחוסר סנכרון בנתונים.',
+              warningOnly: true, // Warning only - shows alert but allows editing
+            ),
+          ),
+        ),
       ];
 
       final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
@@ -245,7 +259,7 @@ class SummarySheetService {
         _spreadsheetId,
       );
 
-      debugPrint('✅ [SUMMARY] Summary sheet formatted successfully');
+      debugPrint('✅ [SUMMARY] Summary sheet formatted and protected successfully');
     } catch (e) {
       debugPrint('❌ [SUMMARY] Error formatting summary sheet: $e');
     }

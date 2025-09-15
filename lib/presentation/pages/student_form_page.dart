@@ -6,6 +6,7 @@ import '../../services/google_auth_service.dart';
 import '../../services/google_sheets_service.dart';
 import '../../services/firebase_data_service.dart';
 import '../../services/educator_self_init_service.dart';
+import '../../services/secretary_service.dart';
 import '../../data/models/student_record.dart';
 import '../widgets/hebrew_text_field.dart';
 import '../widgets/firebase_dropdown.dart';
@@ -16,7 +17,7 @@ import '../widgets/score_display.dart';
 import '../providers/form_provider.dart';
 import '../../core/educator_mappings.dart';
 import '../../config/app_config.dart';
-import 'educator_settings_page.dart';
+import 'attendance_page.dart';
 
 class StudentFormPage extends StatefulWidget {
   const StudentFormPage({super.key});
@@ -32,6 +33,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
   late FormProvider _formProvider;
   late FirebaseDataService _firebaseDataService;
   late EducatorSelfInitService _educatorInitService;
+  late SecretaryService _secretaryService;
   Timer? _debounceTimer;
 
   @override
@@ -42,7 +44,8 @@ class _StudentFormPageState extends State<StudentFormPage> {
     _formProvider = context.read<FormProvider>();
     _firebaseDataService = context.read<FirebaseDataService>();
     _educatorInitService = EducatorSelfInitService(_authService);
-    
+    _secretaryService = SecretaryService(_authService);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeForm();
     });
@@ -69,15 +72,32 @@ class _StudentFormPageState extends State<StudentFormPage> {
     }
     
     if (AppConfig.useServiceAccount) {
-      // Service account mode - skip authentication
-      debugPrint('[FORM] Service account mode - skipping authentication');
+      // Service account mode - initialize sheets with service account
+      debugPrint('[FORM] Service account mode - initializing sheets service');
       if (!_sheetsService.isInitialized) {
         debugPrint('[FORM] Initializing sheets service with service account');
         await _sheetsService.initialize();
       }
-      
-      // CRITICAL: Check if user is an educator even in service account mode!
+
+      // Still need OAuth for user identification (secretary/educator check)
+      debugPrint('[FORM] Service account mode - checking OAuth for user identity');
+      await _authService.initialize();
+
+      if (!_authService.isAuthenticated) {
+        debugPrint('[FORM] User not authenticated in service account mode - prompting OAuth sign-in for identity');
+        await _promptSignIn();
+      }
+
+      // Now check if user is secretary or educator
       if (_authService.isAuthenticated) {
+        // Check if user is secretary and initialize attendance spreadsheet
+        debugPrint('[SECRETARY-INIT] Checking if user is secretary (service account mode)...');
+        final secretaryInitialized = await _secretaryService.initializeSecretary();
+        if (secretaryInitialized) {
+          debugPrint('[SECRETARY-INIT] Secretary services initialized with attendance spreadsheet');
+        }
+
+        // Check if user is an educator
         debugPrint('[EDUCATOR-INIT] Checking if user is an educator (service account mode)...');
         final isEducator = await _educatorInitService.isEducator();
         if (isEducator) {
@@ -88,7 +108,7 @@ class _StudentFormPageState extends State<StudentFormPage> {
           }
         }
       }
-      
+
       debugPrint('[FORM] Initializing form provider with defaults');
       await _formProvider.initializeWithDefaults(_sheetsService);
     } else {
@@ -108,6 +128,13 @@ class _StudentFormPageState extends State<StudentFormPage> {
       }
       
       if (_authService.isAuthenticated) {
+        // Check if user is secretary and initialize attendance spreadsheet
+        debugPrint('[SECRETARY-INIT] Checking if user is secretary (OAuth mode)...');
+        final secretaryInitialized = await _secretaryService.initializeSecretary();
+        if (secretaryInitialized) {
+          debugPrint('[SECRETARY-INIT] Secretary services initialized with attendance spreadsheet');
+        }
+
         // Check if user is an educator and initialize their spreadsheet
         debugPrint('[EDUCATOR-INIT] Checking if user is an educator...');
         final isEducator = await _educatorInitService.isEducator();
@@ -161,7 +188,26 @@ class _StudentFormPageState extends State<StudentFormPage> {
         if (!_sheetsService.isInitialized) {
           await _sheetsService.initialize();
         }
-        
+
+        // Check if user is secretary and initialize attendance spreadsheet
+        debugPrint('[SECRETARY-INIT] Checking if user is secretary after sign-in...');
+        final secretaryInitialized = await _secretaryService.initializeSecretary();
+        if (secretaryInitialized) {
+          debugPrint('[SECRETARY-INIT] Secretary services initialized with attendance spreadsheet');
+          // Show success message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'גיליון נוכחות נוצר בהצלחה ושותף עם השירות',
+                  textDirection: TextDirection.rtl,
+                ),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+
         // Check if user is an educator and initialize their spreadsheet
         debugPrint('[EDUCATOR-INIT] Checking if user is an educator...');
         final isEducator = await _educatorInitService.isEducator();
@@ -258,30 +304,25 @@ class _StudentFormPageState extends State<StudentFormPage> {
                   onSelected: (value) async {
                     if (value == 'signout') {
                       await authService.signOut();
-                    } else if (value == 'educator_settings') {
-                      // Navigate to educator settings page
-                      final result = await Navigator.push(
+                    } else if (value == 'attendance') {
+                      // Navigate to attendance page (available for all users)
+                      // Data will be sent to the secretary's spreadsheet
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const EducatorSettingsPage(),
+                          builder: (context) => const AttendancePage(),
                         ),
                       );
-                      // Reload mappings if settings were changed
-                      if (result == true) {
-                        final firebaseService = context.read<FirebaseDataService>();
-                        await EducatorMappings.initialize(firebaseService: firebaseService);
-                        setState(() {}); // Refresh UI to show updated indicators
-                      }
                     }
                   },
                   itemBuilder: (context) => [
                     const PopupMenuItem<String>(
-                      value: 'educator_settings',
+                      value: 'attendance',
                       child: Row(
                         children: [
-                          Icon(Icons.share),
+                          Icon(Icons.check_box),
                           SizedBox(width: 8),
-                          Text('הגדרות שיתוף למחנכות/ים'),
+                          Text('רישום נוכחות'),
                         ],
                       ),
                     ),

@@ -21,7 +21,11 @@
       "Bash(flutter:*)",
       "Bash(nc localhost 64631)",
       "Bash(git pull:*)",
-      "Bash(adb:*)"
+      "Bash(adb:*)",
+      "Bash(dart analyze:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(nc localhost 64871)"
     ],
     "deny": [],
     "ask": [],

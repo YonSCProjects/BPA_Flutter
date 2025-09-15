@@ -399,3 +399,131 @@ class StudentData {
     return 'StudentData(id: $id, name: $name, educatorName: $educatorName, active: $active)';
   }
 }
+
+// Extension methods for FirebaseDataService
+extension AttendanceExtensions on FirebaseDataService {
+  /// Get user data including role
+  Future<Map<String, dynamic>?> getUserData(String email) async {
+    if (!isInitialized || _firestore == null) {
+      _logDebug('⚠️ Firebase not initialized for user data retrieval');
+      return null;
+    }
+
+    try {
+      // Check in users collection
+      final userDoc = await _firestore!.collection('users').doc(email).get();
+      if (userDoc.exists) {
+        return userDoc.data();
+      }
+
+      // Check in educators collection (backward compatibility)
+      final educatorDoc = await _firestore!.collection('educators')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (educatorDoc.docs.isNotEmpty) {
+        final data = educatorDoc.docs.first.data();
+        // Add default role if not present
+        data['role'] = data['role'] ?? 'teacher';
+        return data;
+      }
+
+      return null;
+    } catch (e) {
+      _logDebug('❌ Error getting user data: $e');
+      return null;
+    }
+  }
+
+  /// Get all classes from Firebase
+  Future<List<Map<String, dynamic>>> getAllClasses() async {
+    if (!isInitialized || _firestore == null) {
+      _logDebug('⚠️ Firebase not initialized for classes retrieval');
+      return [];
+    }
+
+    try {
+      // Get unique classes from students collection
+      final studentsSnapshot = await _firestore!.collection('students').get();
+      _logDebug('📄 [CLASSES] Found ${studentsSnapshot.docs.length} student documents');
+
+      final classesSet = <String>{};
+      final classesList = <Map<String, dynamic>>[];
+
+      for (final doc in studentsSnapshot.docs) {
+        final data = doc.data();
+        _logDebug('👥 [CLASSES] Student data: $data');
+
+        // Try multiple field names for class
+        final className = data['educatorName'] ??
+                         data['className'] ??
+                         data['class'] ??
+                         data['כיתה'] ??
+                         '';
+
+        if (className.isNotEmpty && !classesSet.contains(className)) {
+          classesSet.add(className);
+          classesList.add({
+            'className': className,
+            'educatorId': data['educatorId'] ?? '',
+          });
+          _logDebug('✅ [CLASSES] Added class: $className');
+        }
+      }
+
+      _logDebug('🏫 [CLASSES] Total unique classes: ${classesList.length}');
+      return classesList;
+    } catch (e) {
+      _logDebug('❌ Error getting classes: $e');
+      return [];
+    }
+  }
+
+  /// Get all students from Firebase
+  Future<List<Map<String, dynamic>>> getAllStudents() async {
+    if (!isInitialized || _firestore == null) {
+      _logDebug('⚠️ Firebase not initialized for students retrieval');
+      return [];
+    }
+
+    try {
+      final studentsSnapshot = await _firestore!.collection('students').get();
+      _logDebug('👥 [STUDENTS] Found ${studentsSnapshot.docs.length} students');
+
+      final studentsList = <Map<String, dynamic>>[];
+
+      for (final doc in studentsSnapshot.docs) {
+        final data = doc.data();
+        _logDebug('👤 [STUDENTS] Student: ${data['name']} - Data: $data');
+
+        // Try multiple field names for class
+        final className = data['educatorName'] ??
+                         data['className'] ??
+                         data['class'] ??
+                         data['כיתה'] ??
+                         '';
+
+        studentsList.add({
+          'id': doc.id,
+          'name': data['name'] ?? data['studentName'] ?? '',
+          'className': className,
+          'educatorId': data['educatorId'] ?? '',
+          'active': data['active'] ?? true,
+        });
+      }
+
+      _logDebug('🎓 [STUDENTS] Processed ${studentsList.length} students');
+      return studentsList;
+    } catch (e) {
+      _logDebug('❌ Error getting students: $e');
+      return [];
+    }
+  }
+
+  void _logDebug(String message) {
+    if (AppConfig.debugEnterpriseFeatures) {
+      debugPrint('[FIREBASE-ATTENDANCE] $message');
+    }
+  }
+}

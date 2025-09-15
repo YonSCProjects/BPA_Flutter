@@ -155,5 +155,12 @@ Repository: https://github.com/YonSCProjects/BPA_Flutter
 - ❌ Break existing Google Sheets integration
 - ❌ Remove offline SQLite functionality
 
+## Developer Reminders
+- TODO: Add your reminders here
+- TODO: move to dedicated folder on My Drive
+- TODO: create iOS version release
+- FIXME: Important issues to address
+- NOTE: Key information to remember
+
 ## Contact for Issues
 Report issues at: https://github.com/anthropics/claude-code/issues

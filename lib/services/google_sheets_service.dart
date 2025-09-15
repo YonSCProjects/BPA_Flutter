@@ -521,8 +521,10 @@ class GoogleSheetsService extends ChangeNotifier {
       final userEmail = currentUser!.email;
       debugPrint('Protecting spreadsheet with edit access for: $userEmail');
 
-      // Only protect the header row (row 1) - leave data rows unprotected for app to write
-      final protectionRequest = sheets.Request(
+      final requests = <sheets.Request>[];
+
+      // 1. Protect the header row with hard protection
+      requests.add(sheets.Request(
         addProtectedRange: sheets.AddProtectedRangeRequest(
           protectedRange: sheets.ProtectedRange(
             range: sheets.GridRange(
@@ -540,10 +542,27 @@ class GoogleSheetsService extends ChangeNotifier {
             ),
           ),
         ),
-      );
+      ));
+
+      // 2. Add warning-only protection for the entire data area
+      requests.add(sheets.Request(
+        addProtectedRange: sheets.AddProtectedRangeRequest(
+          protectedRange: sheets.ProtectedRange(
+            range: sheets.GridRange(
+              sheetId: _sheetId ?? 0,
+              startRowIndex: 1, // Start from row 2 (after headers)
+              endRowIndex: 1000, // Protect up to row 1000
+              startColumnIndex: 0,
+              endColumnIndex: hebrewHeaders.length,
+            ),
+            description: 'אזהרה: הגיליון הזה מנוהל אוטומטית על ידי אפליקציית BPApp. עריכה ידנית עלולה לגרום לבעיות בסנכרון הנתונים. מומלץ להשתמש רק באפליקציה לעדכון נתונים.',
+            warningOnly: true, // Warning only - shows alert but allows editing
+          ),
+        ),
+      ));
 
       final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
-        requests: [protectionRequest],
+        requests: requests,
       );
 
       await _sheetsApi!.spreadsheets.batchUpdate(
