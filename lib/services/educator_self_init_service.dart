@@ -364,7 +364,7 @@ class EducatorSelfInitService extends ChangeNotifier {
     try {
       final headers = [
         'תאריך',
-        'שם התלמיד', 
+        'שם התלמיד',
         'שם הכיתה',
         'מספר השיעור',
         'כניסה',
@@ -376,27 +376,86 @@ class EducatorSelfInitService extends ChangeNotifier {
         'הערות',
         'סה"כ',
       ];
-      
+
       final values = sheets.ValueRange(
         range: 'נתוני תלמידים!A1:L1',
         majorDimension: 'ROWS',
         values: [headers],
       );
-      
+
+      // Use RAW to avoid any automatic formatting
       await sheetsApi.spreadsheets.values.update(
         values,
         spreadsheetId,
         'נתוני תלמידים!A1:L1',
-        valueInputOption: 'USER_ENTERED',
+        valueInputOption: 'RAW',
       );
-      
-      debugPrint('✅ [EDUCATOR-INIT] Headers added');
+
+      // Format headers without bold
+      await _formatHeaders(sheetsApi, spreadsheetId);
+
+      debugPrint('✅ [EDUCATOR-INIT] Headers added and formatted');
       
     } catch (e) {
       debugPrint('⚠️ [EDUCATOR-INIT] Error adding headers: $e');
     }
   }
-  
+
+  /// Format headers without bold font
+  Future<void> _formatHeaders(sheets.SheetsApi sheetsApi, String spreadsheetId) async {
+    try {
+      debugPrint('🎨 [EDUCATOR-INIT] Formatting headers without bold...');
+
+      // Get the sheet ID
+      final spreadsheet = await sheetsApi.spreadsheets.get(spreadsheetId);
+      final sheetId = spreadsheet.sheets?.first.properties?.sheetId ?? 0;
+
+      // Create formatting request - NO BOLD
+      final requests = [
+        sheets.Request(
+          repeatCell: sheets.RepeatCellRequest(
+            range: sheets.GridRange(
+              sheetId: sheetId,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 12,
+            ),
+            cell: sheets.CellData(
+              userEnteredFormat: sheets.CellFormat(
+                backgroundColor: sheets.Color(
+                  red: 0.95,
+                  green: 0.95,
+                  blue: 0.95,
+                ),
+                textFormat: sheets.TextFormat(
+                  bold: false,  // Explicitly set to NOT bold
+                  fontSize: 11,
+                ),
+                horizontalAlignment: 'CENTER',
+              ),
+            ),
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+          ),
+        ),
+      ];
+
+      final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
+        requests: requests,
+      );
+
+      await sheetsApi.spreadsheets.batchUpdate(
+        batchUpdateRequest,
+        spreadsheetId,
+      );
+
+      debugPrint('✅ [EDUCATOR-INIT] Headers formatted without bold');
+    } catch (e) {
+      debugPrint('⚠️ [EDUCATOR-INIT] Error formatting headers: $e');
+      // Non-critical error, continue
+    }
+  }
+
   /// Share the spreadsheet with service account as editor
   Future<void> _shareWithServiceAccount(String spreadsheetId) async {
     try {

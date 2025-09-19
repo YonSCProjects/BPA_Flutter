@@ -214,7 +214,7 @@ class SummarySheetService {
                 backgroundColor: sheets.Color(red: 0.2, green: 0.3, blue: 0.8),
                 textFormat: sheets.TextFormat(
                   foregroundColor: sheets.Color(red: 1.0, green: 1.0, blue: 1.0),
-                  bold: true,
+                  bold: false,  // Consistent non-bold design
                   fontSize: 11,
                 ),
                 horizontalAlignment: 'CENTER',
@@ -769,15 +769,15 @@ class SummarySheetService {
       switch (recordType) {
         case 'יומי':
           backgroundColor = sheets.Color(red: 0.89, green: 0.95, blue: 0.99); // Light blue
-          bold = true;
+          bold = false;  // Consistent non-bold design
           break;
         case 'שבועי':
           backgroundColor = sheets.Color(red: 0.91, green: 0.96, blue: 0.91); // Light green
-          bold = true;
+          bold = false;  // Consistent non-bold design
           break;
         case 'חודשי':
           backgroundColor = sheets.Color(red: 1.0, green: 0.98, blue: 0.77); // Light yellow
-          bold = true;
+          bold = false;  // Consistent non-bold design
           break;
       }
 

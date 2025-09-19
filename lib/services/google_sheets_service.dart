@@ -735,13 +735,13 @@ class GoogleSheetsService extends ChangeNotifier {
             cell: sheets.CellData(
               userEnteredFormat: sheets.CellFormat(
                 backgroundColor: sheets.Color(
-                  red: 0.9,
-                  green: 0.9,
-                  blue: 0.9,
+                  red: 0.95,
+                  green: 0.95,
+                  blue: 0.95,
                 ),
                 textFormat: sheets.TextFormat(
-                  bold: true,
-                  fontSize: 12,
+                  bold: false,  // Changed to non-bold for consistency
+                  fontSize: 11,
                 ),
                 horizontalAlignment: 'CENTER',
               ),
