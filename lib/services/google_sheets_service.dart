@@ -749,6 +749,17 @@ class GoogleSheetsService extends ChangeNotifier {
             fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
           ),
         ),
+        // Auto-resize all columns to fit content
+        sheets.Request(
+          autoResizeDimensions: sheets.AutoResizeDimensionsRequest(
+            dimensions: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 0,
+              endIndex: hebrewHeaders.length,
+            ),
+          ),
+        ),
       ];
 
       final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(

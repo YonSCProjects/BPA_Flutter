@@ -426,13 +426,24 @@ class SecretaryService extends ChangeNotifier {
                 backgroundColor: sheets.Color(red: 0.2, green: 0.3, blue: 0.8),
                 textFormat: sheets.TextFormat(
                   foregroundColor: sheets.Color(red: 1.0, green: 1.0, blue: 1.0),
-                  bold: true,
+                  bold: false,  // Consistent non-bold design
                   fontSize: 11,
                 ),
                 horizontalAlignment: 'CENTER',
               ),
             ),
             fields: 'userEnteredFormat',
+          ),
+        ),
+        // Auto-resize all columns to fit content
+        sheets.Request(
+          autoResizeDimensions: sheets.AutoResizeDimensionsRequest(
+            dimensions: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 0,
+              endIndex: 7,  // 7 columns in summary sheet
+            ),
           ),
         ),
       ];

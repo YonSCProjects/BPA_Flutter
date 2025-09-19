@@ -438,6 +438,17 @@ class EducatorSelfInitService extends ChangeNotifier {
             fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
           ),
         ),
+        // Auto-resize all columns to fit content
+        sheets.Request(
+          autoResizeDimensions: sheets.AutoResizeDimensionsRequest(
+            dimensions: sheets.DimensionRange(
+              sheetId: sheetId,
+              dimension: 'COLUMNS',
+              startIndex: 0,
+              endIndex: 12,  // Total number of columns
+            ),
+          ),
+        ),
       ];
 
       final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
