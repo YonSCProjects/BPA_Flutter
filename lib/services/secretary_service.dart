@@ -435,17 +435,18 @@ class SecretaryService extends ChangeNotifier {
             fields: 'userEnteredFormat',
           ),
         ),
-        // Set column widths with extra padding for better readability
+        // Set column widths based on header text with 2 spaces padding
+        // Headers: ['תאריך', 'כיתה', 'נוכחים', 'חסרים', 'סה"כ', 'אחוז נוכחות', 'מורה מדווח']
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 120,  // Date column
+              pixelSize: 75,  // תאריך (5 chars * 10 + 25 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 0,
-              endIndex: 1,  // תאריך
+              endIndex: 1,
             ),
             fields: 'pixelSize',
           ),
@@ -453,13 +454,13 @@ class SecretaryService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 150,  // Class name
+              pixelSize: 65,  // כיתה (4 chars * 10 + 25 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 1,
-              endIndex: 2,  // שם כיתה
+              endIndex: 2,
             ),
             fields: 'pixelSize',
           ),
@@ -467,13 +468,13 @@ class SecretaryService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 100,  // Numeric columns
+              pixelSize: 80,  // נוכחים (6 chars * 10 + 20 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 2,
-              endIndex: 6,  // נוכחים, חסרים, מאחרים, סה"כ
+              endIndex: 3,
             ),
             fields: 'pixelSize',
           ),
@@ -481,13 +482,55 @@ class SecretaryService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 200,  // Teacher name column
+              pixelSize: 75,  // חסרים (5 chars * 10 + 25 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 3,
+              endIndex: 4,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 60,  // סה"כ (4 chars * 10 + 20 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 4,
+              endIndex: 5,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 105,  // אחוז נוכחות (9 chars * 10 + 15 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 5,
+              endIndex: 6,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 105,  // מורה מדווח (8 chars * 10 + 25 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 6,
-              endIndex: 7,  // שם המורה
+              endIndex: 7,
             ),
             fields: 'pixelSize',
           ),

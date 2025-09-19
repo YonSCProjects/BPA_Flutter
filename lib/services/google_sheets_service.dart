@@ -749,17 +749,18 @@ class GoogleSheetsService extends ChangeNotifier {
             fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
           ),
         ),
-        // Set column widths with extra padding for better readability
+        // Set column widths based on header text with 2 spaces padding
+        // Hebrew text approximately 8-10 pixels per character + padding
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 150,  // Default width with padding
+              pixelSize: 75,  // תאריך (5 chars * 10 + 25 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 0,
-              endIndex: 1,  // תאריך
+              endIndex: 1,
             ),
             fields: 'pixelSize',
           ),
@@ -767,13 +768,13 @@ class GoogleSheetsService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 180,  // Wider for student names
+              pixelSize: 110,  // שם התלמיד (9 chars * 10 + 20 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 1,
-              endIndex: 2,  // שם התלמיד
+              endIndex: 2,
             ),
             fields: 'pixelSize',
           ),
@@ -781,13 +782,13 @@ class GoogleSheetsService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 120,  // Class names
+              pixelSize: 95,  // שם הכיתה (7 chars * 10 + 25 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 2,
-              endIndex: 4,  // שם הכיתה and מספר השיעור
+              endIndex: 3,
             ),
             fields: 'pixelSize',
           ),
@@ -795,13 +796,27 @@ class GoogleSheetsService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 100,  // Score columns
+              pixelSize: 110,  // מספר השיעור (10 chars * 10 + 10 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 3,
+              endIndex: 4,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 70,  // כניסה (5 chars * 10 + 20 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 4,
-              endIndex: 11,  // All score columns
+              endIndex: 5,
             ),
             fields: 'pixelSize',
           ),
@@ -809,13 +824,97 @@ class GoogleSheetsService extends ChangeNotifier {
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 250,  // Wide for comments
+              pixelSize: 70,  // שהייה (5 chars * 10 + 20 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 5,
+              endIndex: 6,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 75,  // אווירה (6 chars * 10 + 15 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 6,
+              endIndex: 7,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 70,  // ביצוע (5 chars * 10 + 20 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 7,
+              endIndex: 8,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 105,  // מטרה אישית (9 chars * 10 + 15 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 8,
+              endIndex: 9,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 60,  // בונוס (4 chars * 10 + 20 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 9,
+              endIndex: 10,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 60,  // סה"כ (4 chars * 10 + 20 padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 10,
+              endIndex: 11,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 75,  // הערות (5 chars * 10 + 25 padding)
             ),
             range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 11,
-              endIndex: 12,  // הערות
+              endIndex: 12,
             ),
             fields: 'pixelSize',
           ),

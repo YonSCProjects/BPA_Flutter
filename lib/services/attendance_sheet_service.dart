@@ -593,17 +593,48 @@ class AttendanceSheetService extends ChangeNotifier {
             fields: 'userEnteredFormat',
           ),
         ),
-        // Set column widths with extra padding for better readability
+        // Set column widths based on content type with 2 spaces padding
+        // First column is date (תאריך), rest are student names, last 3 are statistics
         sheets.Request(
           updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
             properties: sheets.DimensionProperties(
-              pixelSize: 180,  // Wider for student names in attendance sheets
+              pixelSize: 75,  // תאריך column
             ),
             range: sheets.DimensionRange(
               sheetId: sheetId,
               dimension: 'COLUMNS',
               startIndex: 0,
-              endIndex: columnCount,  // Apply to all columns
+              endIndex: 1,
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        // Student name columns - adaptive width
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 110,  // Student names (average 9 chars + padding)
+            ),
+            range: sheets.DimensionRange(
+              sheetId: sheetId,
+              dimension: 'COLUMNS',
+              startIndex: 1,
+              endIndex: columnCount > 4 ? columnCount - 3 : columnCount - 2,  // All student columns
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        // Statistics columns at the end
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 80,  // נוכחים/חסרים/אחוז
+            ),
+            range: sheets.DimensionRange(
+              sheetId: sheetId,
+              dimension: 'COLUMNS',
+              startIndex: columnCount > 4 ? columnCount - 3 : columnCount - 2,
+              endIndex: columnCount,
             ),
             fields: 'pixelSize',
           ),
