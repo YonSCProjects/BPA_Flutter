@@ -4,6 +4,7 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'google_auth_service.dart';
 import 'service_account_sheets_service.dart';
+import 'drive_folder_service.dart';
 import '../data/models/attendance_record.dart';
 import '../config/app_config.dart';
 
@@ -16,6 +17,7 @@ class AttendanceSheetService extends ChangeNotifier {
 
   sheets.SheetsApi? _sheetsApi;
   drive.DriveApi? _driveApi;
+  DriveFolderService? _folderService;
   String? _spreadsheetId;
   Map<String, int?> _classSheetIds = {}; // Class name -> Sheet ID
   Map<String, List<String>> _classStudentHeaders = {}; // Class -> ordered student list
@@ -99,6 +101,7 @@ class AttendanceSheetService extends ChangeNotifier {
         if (client != null) {
           _sheetsApi = sheets.SheetsApi(client);
           _driveApi = drive.DriveApi(client);
+          _folderService = DriveFolderService(_driveApi!);
           debugPrint('✅ [ATTENDANCE] Service account APIs initialized');
         } else {
           debugPrint('⚠️ [ATTENDANCE] Service account client is null');
@@ -112,6 +115,7 @@ class AttendanceSheetService extends ChangeNotifier {
         if (client != null) {
           _sheetsApi = sheets.SheetsApi(client);
           _driveApi = drive.DriveApi(client);
+          _folderService = DriveFolderService(_driveApi!);
           debugPrint('✅ [ATTENDANCE] OAuth APIs initialized');
         } else {
           debugPrint('❌ [ATTENDANCE] OAuth client is null');
@@ -205,39 +209,32 @@ class AttendanceSheetService extends ChangeNotifier {
   }
 
   Future<String?> _searchForAttendanceSheetInDrive() async {
-    if (_driveApi == null) return null;
+    if (_driveApi == null || _folderService == null) return null;
 
     try {
       debugPrint('🔍 [ATTENDANCE] Starting Drive search for: $attendanceSpreadsheetName');
 
-      // First, let's see what files the service account can access
-      debugPrint('📂 [ATTENDANCE] Listing all accessible spreadsheets...');
-      final allSheets = await _driveApi!.files.list(
-        q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
-        spaces: 'drive',
-        pageSize: 20,
-        $fields: 'files(id, name, owners)',
-      );
+      // Step 1: Check in BPApp folder first (preferred location)
+      debugPrint('📁 [ATTENDANCE] Checking BPApp folder for attendance spreadsheet...');
+      final folderSpreadsheets = await _folderService!.findSpreadsheetsInFolder(attendanceSpreadsheetName);
 
-      if (allSheets.files != null) {
-        debugPrint('📋 [ATTENDANCE] Service account can see ${allSheets.files!.length} spreadsheets:');
-        for (var sheet in allSheets.files!) {
-          debugPrint('   - ${sheet.name} (ID: ${sheet.id})');
-          if (sheet.name == attendanceSpreadsheetName) {
-            debugPrint('   ✅ FOUND ATTENDANCE SHEET!');
-          }
-        }
+      if (folderSpreadsheets.isNotEmpty) {
+        final file = folderSpreadsheets.first;
+        debugPrint('✅ [ATTENDANCE] Found attendance spreadsheet in BPApp folder:');
+        debugPrint('   ID: ${file.id}');
+        debugPrint('   Name: ${file.name}');
+        return file.id;
       }
 
-      // Now search for the specific attendance sheet
-      debugPrint('🔎 [ATTENDANCE] Searching specifically for: "$attendanceSpreadsheetName"');
+      // Step 2: Check root and shared locations for legacy spreadsheets
+      debugPrint('📁 [ATTENDANCE] Checking for legacy attendance spreadsheet...');
 
-      // Try multiple search approaches
-      // Approach 1: Exact name match
+      // Try multiple search approaches for backward compatibility
+      // Approach 1: Exact name match in any location
       var fileList = await _driveApi!.files.list(
         q: "name='$attendanceSpreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
         spaces: 'drive',
-        $fields: 'files(id, name, owners, permissions)',
+        $fields: 'files(id, name, parents, owners, permissions)',
       );
 
       // If not found, try approach 2: Contains search
@@ -246,7 +243,7 @@ class AttendanceSheetService extends ChangeNotifier {
         fileList = await _driveApi!.files.list(
           q: "name contains 'BPApp_Attendance' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
           spaces: 'drive',
-          $fields: 'files(id, name, owners, permissions)',
+          $fields: 'files(id, name, parents, owners, permissions)',
         );
       }
 
@@ -257,7 +254,7 @@ class AttendanceSheetService extends ChangeNotifier {
           q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and sharedWithMe",
           spaces: 'drive',
           pageSize: 50,
-          $fields: 'files(id, name, owners, permissions)',
+          $fields: 'files(id, name, parents, owners, permissions)',
         );
 
         // Manually filter for attendance sheet
@@ -276,10 +273,25 @@ class AttendanceSheetService extends ChangeNotifier {
 
       if (fileList.files != null && fileList.files!.isNotEmpty) {
         final file = fileList.files!.first;
-        debugPrint('📋 [ATTENDANCE] Found existing attendance spreadsheet:');
+        debugPrint('📋 [ATTENDANCE] Found legacy attendance spreadsheet:');
         debugPrint('   ID: ${file.id}');
         debugPrint('   Name: ${file.name}');
         debugPrint('   Owners: ${file.owners?.map((o) => o.emailAddress).join(', ')}');
+
+        // Check if it's not already in the BPApp folder
+        final folderId = _folderService!.bpAppFolderId ?? await _folderService!.ensureBPAppFolder();
+        final isInFolder = file.parents?.contains(folderId) ?? false;
+
+        if (!isInFolder && folderId != null) {
+          // Migrate to BPApp folder
+          debugPrint('📁 [ATTENDANCE] Migrating attendance spreadsheet to BPApp folder...');
+          final moved = await _folderService!.moveSpreadsheetToFolder(file.id!);
+          if (moved) {
+            debugPrint('✅ [ATTENDANCE] Successfully migrated attendance spreadsheet to BPApp folder');
+          } else {
+            debugPrint('⚠️ [ATTENDANCE] Could not migrate spreadsheet, will continue using it in current location');
+          }
+        }
 
         // Check if service account has access
         bool hasServiceAccountAccess = false;
@@ -309,10 +321,16 @@ class AttendanceSheetService extends ChangeNotifier {
   }
 
   Future<void> _createAttendanceSpreadsheet() async {
-    if (_sheetsApi == null) return;
+    if (_sheetsApi == null || _folderService == null) return;
 
     try {
-      debugPrint('📝 [ATTENDANCE] Creating centralized attendance spreadsheet for all teachers to use');
+      // Ensure BPApp folder exists
+      final folderId = await _folderService!.ensureBPAppFolder();
+      if (folderId == null) {
+        throw Exception('Could not create or find BPApp folder');
+      }
+
+      debugPrint('📁 [ATTENDANCE] Creating attendance spreadsheet in BPApp folder: $folderId');
 
       final spreadsheet = sheets.Spreadsheet(
         properties: sheets.SpreadsheetProperties(
@@ -336,6 +354,15 @@ class AttendanceSheetService extends ChangeNotifier {
 
       final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
       _spreadsheetId = response.spreadsheetId!;
+
+      // Move spreadsheet to BPApp folder
+      debugPrint('📁 [ATTENDANCE] Moving attendance spreadsheet to BPApp folder...');
+      final moved = await _folderService!.moveSpreadsheetToFolder(_spreadsheetId!);
+      if (moved) {
+        debugPrint('✅ [ATTENDANCE] Attendance spreadsheet created in BPApp folder: $_spreadsheetId');
+      } else {
+        debugPrint('⚠️ [ATTENDANCE] Created attendance spreadsheet but could not move to folder');
+      }
 
       // Add summary headers
       await _addSummaryHeaders();
@@ -733,6 +760,10 @@ class AttendanceSheetService extends ChangeNotifier {
     if (_sheetsApi == null || _spreadsheetId == null) return;
 
     try {
+      // First, check if a row with this date and class already exists
+      debugPrint('🔍 [ATTENDANCE] Checking for existing summary row for date: ${record.date}, class: ${record.className}');
+      final existingRow = await _findExistingSummaryRow(record.date, record.className);
+
       final presentCount = record.studentAttendance.values.where((v) => v).length;
       final totalCount = record.studentAttendance.length;
       final absentCount = totalCount - presentCount;
@@ -753,18 +784,65 @@ class AttendanceSheetService extends ChangeNotifier {
         values: [summaryRow],
       );
 
-      // Append to summary sheet
-      await _sheetsApi!.spreadsheets.values.append(
-        valueRange,
-        _spreadsheetId!,
-        '$attendanceMainSheet!A:F',
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-      );
-
-      debugPrint('📊 [ATTENDANCE] Updated summary sheet');
+      if (existingRow != null) {
+        // Update existing row
+        debugPrint('📝 [ATTENDANCE] Updating existing summary row $existingRow');
+        await _sheetsApi!.spreadsheets.values.update(
+          valueRange,
+          _spreadsheetId!,
+          '$attendanceMainSheet!A$existingRow:F$existingRow',
+          valueInputOption: 'RAW',
+        );
+        debugPrint('✅ [ATTENDANCE] Updated existing summary row');
+      } else {
+        // Append new row
+        debugPrint('➕ [ATTENDANCE] Adding new summary row');
+        await _sheetsApi!.spreadsheets.values.append(
+          valueRange,
+          _spreadsheetId!,
+          '$attendanceMainSheet!A:F',
+          valueInputOption: 'RAW',
+          insertDataOption: 'INSERT_ROWS',
+        );
+        debugPrint('✅ [ATTENDANCE] Added new summary row');
+      }
     } catch (e) {
       debugPrint('❌ [ATTENDANCE] Error updating summary: $e');
+    }
+  }
+
+  /// Find existing row in summary sheet with matching date and class
+  Future<int?> _findExistingSummaryRow(String date, String className) async {
+    if (_sheetsApi == null || _spreadsheetId == null) return null;
+
+    try {
+      // Get all data from summary sheet
+      final response = await _sheetsApi!.spreadsheets.values.get(
+        _spreadsheetId!,
+        '$attendanceMainSheet!A:B',  // Only need date and class columns
+      );
+
+      if (response.values != null) {
+        // Skip header row (index 0) and search for matching date+class
+        for (int i = 1; i < response.values!.length; i++) {
+          final row = response.values![i];
+          if (row.length >= 2) {
+            final rowDate = row[0].toString();
+            final rowClass = row[1].toString();
+
+            if (rowDate == date && rowClass == className) {
+              debugPrint('🔍 [ATTENDANCE] Found existing summary row at position ${i + 1}');
+              return i + 1; // Sheet rows are 1-indexed
+            }
+          }
+        }
+      }
+
+      debugPrint('🔍 [ATTENDANCE] No existing summary row found for date: $date, class: $className');
+      return null;
+    } catch (e) {
+      debugPrint('❌ [ATTENDANCE] Error searching for existing summary row: $e');
+      return null;
     }
   }
 
