@@ -3,6 +3,7 @@ import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'google_auth_service.dart';
 import 'google_sheets_service.dart';
+import 'drive_folder_service.dart';
 import '../core/educator_mappings.dart';
 
 /// Service for educators to self-initialize their BPApp spreadsheet
@@ -30,33 +31,124 @@ class EducatorSelfInitService extends ChangeNotifier {
     try {
       final client = await _authService.getAuthenticatedClient();
       if (client == null) return null;
-      
+
       final driveApi = drive.DriveApi(client);
       final currentUserEmail = _authService.currentUser?.email;
-      
+
       debugPrint('🔍 [EDUCATOR-INIT] Searching for existing BPApp for: $currentUserEmail');
-      
-      // Search for BPApp owned by the educator
+
+      // CRITICAL: First search entire Drive for ANY BPApp spreadsheet owned by user
+      // This prevents duplicates even if folder structure changes
+      debugPrint('🔍 [EDUCATOR-INIT] Searching entire Drive for BPApp spreadsheets...');
+
+      try {
+        final query = "name='BPApp' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners";
+        final response = await driveApi.files.list(
+          q: query,
+          spaces: 'drive',
+          $fields: 'files(id,name,parents,owners(emailAddress,displayName))',
+        );
+
+        if (response.files != null && response.files!.isNotEmpty) {
+          final spreadsheetId = response.files!.first.id!;
+          debugPrint('✅ [EDUCATOR-INIT] Found existing BPApp (Drive search): $spreadsheetId');
+
+          // Warn if duplicates exist
+          if (response.files!.length > 1) {
+            debugPrint('⚠️⚠️⚠️ [EDUCATOR-INIT] WARNING: ${response.files!.length} duplicate BPApp spreadsheets found!');
+            debugPrint('⚠️ [EDUCATOR-INIT] Using: $spreadsheetId');
+            debugPrint('⚠️ [EDUCATOR-INIT] Duplicates: ${response.files!.skip(1).map((f) => f.id).join(", ")}');
+          }
+
+          return spreadsheetId;
+        }
+      } catch (e) {
+        debugPrint('⚠️ [EDUCATOR-INIT] Drive search error: $e');
+      }
+
+      // Then try to find in the BPApp folder (secondary check)
+      final folderService = DriveFolderService(driveApi);
+      final folderId = await folderService.ensureBPAppFolder();
+
+      if (folderId != null) {
+        debugPrint('📁 [EDUCATOR-INIT] Searching in BPApp folder: $folderId');
+
+        // Search for ALL BPApp spreadsheets in the folder first
+        final allSpreadsheets = await folderService.findSpreadsheetsInFolder(
+          'BPApp',
+          userEmail: null, // Get ALL BPApp spreadsheets first
+        );
+
+        debugPrint('📊 [EDUCATOR-INIT] Found ${allSpreadsheets.length} total BPApp spreadsheet(s) in folder');
+
+        // Now filter by ownership
+        final ownedSpreadsheets = allSpreadsheets.where((file) {
+          final isOwned = file.owners?.any((owner) =>
+            owner.emailAddress?.toLowerCase() == currentUserEmail?.toLowerCase()
+          ) ?? false;
+
+          if (isOwned) {
+            debugPrint('✅ [EDUCATOR-INIT] Spreadsheet ${file.id} IS owned by $currentUserEmail');
+          } else {
+            debugPrint('❌ [EDUCATOR-INIT] Spreadsheet ${file.id} is NOT owned by $currentUserEmail');
+          }
+          return isOwned;
+        }).toList();
+
+        debugPrint('📊 [EDUCATOR-INIT] Found ${ownedSpreadsheets.length} spreadsheet(s) owned by $currentUserEmail');
+
+        if (ownedSpreadsheets.isNotEmpty) {
+          final spreadsheetId = ownedSpreadsheets.first.id!;
+          debugPrint('✅ [EDUCATOR-INIT] Using existing BPApp in folder: $spreadsheetId');
+
+          // Warn about duplicates
+          if (ownedSpreadsheets.length > 1) {
+            debugPrint('⚠️⚠️⚠️ [EDUCATOR-INIT] WARNING: Found ${ownedSpreadsheets.length} duplicate BPApp spreadsheets!');
+            debugPrint('⚠️ [EDUCATOR-INIT] Using: $spreadsheetId');
+            debugPrint('⚠️ [EDUCATOR-INIT] Duplicates: ${ownedSpreadsheets.skip(1).map((f) => f.id).join(", ")}');
+          }
+
+          return spreadsheetId;
+        }
+      }
+
+      // Fallback: Search in entire Drive (for legacy spreadsheets)
       final query = "name = 'BPApp' and "
                    "mimeType='application/vnd.google-apps.spreadsheet' and "
                    "trashed=false and "
                    "'me' in owners"; // 'me' means the authenticated user
-      
+
       final response = await driveApi.files.list(
         q: query,
         spaces: 'drive',
-        $fields: 'files(id,name,owners)',
+        $fields: 'files(id,name,owners,parents)',
       );
-      
+
       if (response.files != null && response.files!.isNotEmpty) {
         final spreadsheetId = response.files!.first.id!;
-        debugPrint('✅ [EDUCATOR-INIT] Found existing BPApp: $spreadsheetId');
+        debugPrint('✅ [EDUCATOR-INIT] Found existing BPApp (not in folder): $spreadsheetId');
+
+        // Try to move it to the folder if it's not there
+        if (folderId != null && response.files!.first.parents?.contains(folderId) != true) {
+          try {
+            await driveApi.files.update(
+              drive.File(),
+              spreadsheetId,
+              addParents: folderId,
+              $fields: 'id,parents',
+            );
+            debugPrint('✅ [EDUCATOR-INIT] Moved existing spreadsheet to folder');
+          } catch (e) {
+            debugPrint('⚠️ [EDUCATOR-INIT] Could not move to folder: $e');
+          }
+        }
+
         return spreadsheetId;
       }
-      
+
       debugPrint('❌ [EDUCATOR-INIT] No existing BPApp found');
       return null;
-      
+
     } catch (e) {
       debugPrint('❌ [EDUCATOR-INIT] Error searching for spreadsheet: $e');
       return null;
@@ -72,13 +164,26 @@ class EducatorSelfInitService extends ChangeNotifier {
         debugPrint('❌ [EDUCATOR-INIT] No authenticated user');
         return null;
       }
-      
+
       debugPrint('🚀 [EDUCATOR-INIT] Starting initialization for educator: $currentUserEmail');
-      
-      // Check if already exists
-      final existingId = await findEducatorSpreadsheet();
+
+      // CRITICAL: Check multiple times to prevent duplicates
+      debugPrint('⚠️ [EDUCATOR-INIT] Checking for existing spreadsheet (attempt 1)...');
+      var existingId = await findEducatorSpreadsheet();
       if (existingId != null) {
-        debugPrint('ℹ️ [EDUCATOR-INIT] Spreadsheet already exists, ensuring service account access');
+        debugPrint('ℹ️ [EDUCATOR-INIT] Spreadsheet already exists: $existingId');
+        await _ensureServiceAccountAccess(existingId);
+        return existingId;
+      }
+
+      // Wait and check again to handle race conditions
+      debugPrint('⏳ [EDUCATOR-INIT] Waiting 2 seconds and checking again...');
+      await Future.delayed(const Duration(seconds: 2));
+
+      debugPrint('⚠️ [EDUCATOR-INIT] Checking for existing spreadsheet (attempt 2)...');
+      existingId = await findEducatorSpreadsheet();
+      if (existingId != null) {
+        debugPrint('ℹ️ [EDUCATOR-INIT] Found spreadsheet on second check: $existingId');
         await _ensureServiceAccountAccess(existingId);
         return existingId;
       }
@@ -107,42 +212,102 @@ class EducatorSelfInitService extends ChangeNotifier {
     try {
       final client = await _authService.getAuthenticatedClient();
       if (client == null) return null;
-      
+
+      final driveApi = drive.DriveApi(client);
       final sheetsApi = sheets.SheetsApi(client);
       final currentUserEmail = _authService.currentUser?.email;
-      
+
       debugPrint('📝 [EDUCATOR-INIT] Creating BPApp for educator: $currentUserEmail');
-      
-      // Create spreadsheet with Hebrew setup
-      final spreadsheet = sheets.Spreadsheet(
-        properties: sheets.SpreadsheetProperties(
-          title: 'BPApp',
-          locale: 'en_US',
-          timeZone: 'Asia/Jerusalem',
-        ),
-        sheets: [
-          sheets.Sheet(
-            properties: sheets.SheetProperties(
-              title: 'נתוני תלמידים',
-              rightToLeft: true,
-              gridProperties: sheets.GridProperties(
-                frozenRowCount: 1,
-                columnCount: 12,
+
+      // First, ensure we have the BPApp folder
+      final folderService = DriveFolderService(driveApi);
+      final folderId = await folderService.ensureBPAppFolder();
+
+      if (folderId == null) {
+        debugPrint('❌ [EDUCATOR-INIT] Could not create/find BPApp folder');
+        return null;
+      }
+
+      debugPrint('📁 [EDUCATOR-INIT] Using BPApp folder: $folderId');
+
+      // Try to create spreadsheet directly in the folder using Drive API
+      try {
+        debugPrint('📝 [EDUCATOR-INIT] Attempting to create spreadsheet directly in folder...');
+
+        // Create the spreadsheet metadata with parent folder
+        final fileMetadata = drive.File()
+          ..name = 'BPApp'
+          ..mimeType = 'application/vnd.google-apps.spreadsheet'
+          ..parents = [folderId];
+
+        // Create the file in Drive
+        final driveFile = await driveApi.files.create(
+          fileMetadata,
+          $fields: 'id,name,parents',
+        );
+
+        if (driveFile.id == null) {
+          throw Exception('No ID returned from Drive API');
+        }
+
+        final spreadsheetId = driveFile.id!;
+        debugPrint('✅ [EDUCATOR-INIT] Created spreadsheet in folder via Drive API: $spreadsheetId');
+
+        // Now set up the spreadsheet structure using Sheets API
+        await _setupSpreadsheetStructure(sheetsApi, spreadsheetId);
+
+        // Add headers
+        await _addHeaders(sheetsApi, spreadsheetId);
+
+        return spreadsheetId;
+
+      } catch (e) {
+        debugPrint('⚠️ [EDUCATOR-INIT] Drive API creation failed, trying Sheets API with move: $e');
+
+        // Fallback: Create with Sheets API then move
+        final spreadsheet = sheets.Spreadsheet(
+          properties: sheets.SpreadsheetProperties(
+            title: 'BPApp',
+            locale: 'en_US',
+            timeZone: 'Asia/Jerusalem',
+          ),
+          sheets: [
+            sheets.Sheet(
+              properties: sheets.SheetProperties(
+                title: 'נתוני תלמידים',
+                rightToLeft: true,
+                gridProperties: sheets.GridProperties(
+                  frozenRowCount: 1,
+                  columnCount: 12,
+                ),
               ),
             ),
-          ),
-        ],
-      );
-      
-      final response = await sheetsApi.spreadsheets.create(spreadsheet);
-      final spreadsheetId = response.spreadsheetId!;
-      
-      debugPrint('✅ [EDUCATOR-INIT] Created spreadsheet: $spreadsheetId');
-      
-      // Add headers
-      await _addHeaders(sheetsApi, spreadsheetId);
-      
-      return spreadsheetId;
+          ],
+        );
+
+        final response = await sheetsApi.spreadsheets.create(spreadsheet);
+        final spreadsheetId = response.spreadsheetId!;
+
+        debugPrint('✅ [EDUCATOR-INIT] Created spreadsheet: $spreadsheetId');
+
+        // Move to folder
+        try {
+          await driveApi.files.update(
+            drive.File(),
+            spreadsheetId,
+            addParents: folderId,
+            $fields: 'id,parents',
+          );
+          debugPrint('✅ [EDUCATOR-INIT] Moved spreadsheet to folder');
+        } catch (moveError) {
+          debugPrint('⚠️ [EDUCATOR-INIT] Could not move to folder: $moveError');
+        }
+
+        // Add headers
+        await _addHeaders(sheetsApi, spreadsheetId);
+
+        return spreadsheetId;
+      }
       
     } catch (e) {
       debugPrint('❌ [EDUCATOR-INIT] Error creating spreadsheet: $e');
@@ -150,6 +315,50 @@ class EducatorSelfInitService extends ChangeNotifier {
     }
   }
   
+  /// Set up spreadsheet structure for Drive API created sheets
+  Future<void> _setupSpreadsheetStructure(sheets.SheetsApi sheetsApi, String spreadsheetId) async {
+    try {
+      debugPrint('📋 [EDUCATOR-INIT] Setting up spreadsheet structure...');
+
+      // Get current spreadsheet to check structure
+      final spreadsheet = await sheetsApi.spreadsheets.get(spreadsheetId);
+
+      // Check if we need to rename the first sheet
+      if (spreadsheet.sheets != null && spreadsheet.sheets!.isNotEmpty) {
+        final firstSheet = spreadsheet.sheets!.first;
+        final sheetId = firstSheet.properties?.sheetId;
+
+        if (sheetId != null) {
+          // Update the first sheet with Hebrew properties
+          final updateRequest = sheets.BatchUpdateSpreadsheetRequest(
+            requests: [
+              sheets.Request(
+                updateSheetProperties: sheets.UpdateSheetPropertiesRequest(
+                  properties: sheets.SheetProperties(
+                    sheetId: sheetId,
+                    title: 'נתוני תלמידים',
+                    rightToLeft: true,
+                    gridProperties: sheets.GridProperties(
+                      frozenRowCount: 1,
+                      columnCount: 12,
+                    ),
+                  ),
+                  fields: 'title,rightToLeft,gridProperties.frozenRowCount,gridProperties.columnCount',
+                ),
+              ),
+            ],
+          );
+
+          await sheetsApi.spreadsheets.batchUpdate(updateRequest, spreadsheetId);
+          debugPrint('✅ [EDUCATOR-INIT] Updated sheet structure');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [EDUCATOR-INIT] Error setting up structure: $e');
+      // Non-critical error, continue
+    }
+  }
+
   /// Add Hebrew headers to the spreadsheet
   Future<void> _addHeaders(sheets.SheetsApi sheetsApi, String spreadsheetId) async {
     try {

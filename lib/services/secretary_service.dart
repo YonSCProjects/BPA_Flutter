@@ -3,6 +3,7 @@ import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'google_auth_service.dart';
+import 'drive_folder_service.dart';
 import '../config/app_config.dart';
 
 /// Secretary Service - Handles secretary-specific operations
@@ -19,6 +20,7 @@ class SecretaryService extends ChangeNotifier {
 
   sheets.SheetsApi? _sheetsApi;
   drive.DriveApi? _driveApi;
+  DriveFolderService? _folderService;
   String? _attendanceSpreadsheetId;
   bool _isInitialized = false;
   String? _error;
@@ -63,6 +65,7 @@ class SecretaryService extends ChangeNotifier {
 
       _sheetsApi = sheets.SheetsApi(client);
       _driveApi = drive.DriveApi(client);
+      _folderService = DriveFolderService(_driveApi!);
 
       // Check if attendance spreadsheet already exists in Firestore
       _attendanceSpreadsheetId = await _getStoredAttendanceSheetId();
@@ -183,24 +186,62 @@ class SecretaryService extends ChangeNotifier {
 
   /// Find existing attendance spreadsheet in Drive
   Future<String?> _findExistingAttendanceSheet() async {
-    if (_driveApi == null) return null;
+    if (_driveApi == null || _folderService == null) return null;
 
     try {
       debugPrint('🔍 [SECRETARY] Searching for existing BPApp_Attendance spreadsheet');
 
-      // Search for spreadsheets with the exact name
-      final fileList = await _driveApi!.files.list(
-        q: "name='$attendanceSpreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
-        spaces: 'drive',
-        $fields: 'files(id, name, owners)',
-      );
+      // CRITICAL: First search ENTIRE Drive for ANY attendance spreadsheet owned by user
+      // This prevents duplicates even if folder structure changes
+      debugPrint('🚨 [SECRETARY] CRITICAL: Searching entire Drive for attendance spreadsheets...');
 
-      if (fileList.files != null && fileList.files!.isNotEmpty) {
-        final file = fileList.files!.first;
-        debugPrint('✅ [SECRETARY] Found existing attendance spreadsheet:');
+      try {
+        final driveWideQuery = "name='$attendanceSpreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners";
+        final driveWideResponse = await _driveApi!.files.list(
+          q: driveWideQuery,
+          spaces: 'drive',
+          $fields: 'files(id,name,parents,owners(emailAddress,displayName))',
+        );
+
+        if (driveWideResponse.files != null && driveWideResponse.files!.isNotEmpty) {
+          final file = driveWideResponse.files!.first;
+          debugPrint('✅✅✅ [SECRETARY] Found existing attendance spreadsheet (Drive-wide search):');
+          debugPrint('   ID: ${file.id}');
+          debugPrint('   Name: ${file.name}');
+          debugPrint('   Parents: ${file.parents?.join(", ") ?? "root"}');
+
+          // Warn if duplicates exist
+          if (driveWideResponse.files!.length > 1) {
+            debugPrint('⚠️⚠️⚠️ [SECRETARY] WARNING: Found ${driveWideResponse.files!.length} duplicate attendance spreadsheets!');
+            debugPrint('⚠️ [SECRETARY] Using: ${file.id}');
+            debugPrint('⚠️ [SECRETARY] Duplicates: ${driveWideResponse.files!.skip(1).map((f) => f.id).join(", ")}');
+          }
+
+          // Try to move to BPApp folder if not already there
+          final folderId = await _folderService!.ensureBPAppFolder();
+          if (folderId != null && file.parents?.contains(folderId) != true) {
+            debugPrint('📁 [SECRETARY] Moving attendance spreadsheet to BPApp folder...');
+            final moved = await _folderService!.moveSpreadsheetToFolder(file.id!);
+            if (moved) {
+              debugPrint('✅ [SECRETARY] Successfully moved to BPApp folder');
+            }
+          }
+
+          return file.id;
+        }
+      } catch (e) {
+        debugPrint('⚠️ [SECRETARY] Drive-wide search error: $e');
+      }
+
+      // Step 2: Check in BPApp folder (secondary check - for sheets not owned by 'me')
+      debugPrint('📁 [SECRETARY] Checking BPApp folder for attendance spreadsheet...');
+      final folderSpreadsheets = await _folderService!.findSpreadsheetsInFolder(attendanceSpreadsheetName);
+
+      if (folderSpreadsheets.isNotEmpty) {
+        final file = folderSpreadsheets.first;
+        debugPrint('✅ [SECRETARY] Found attendance spreadsheet in BPApp folder:');
         debugPrint('   ID: ${file.id}');
         debugPrint('   Name: ${file.name}');
-        debugPrint('   Owners: ${file.owners?.map((o) => o.emailAddress).join(', ')}');
         return file.id;
       }
 
@@ -267,10 +308,36 @@ class SecretaryService extends ChangeNotifier {
 
   /// Create the attendance spreadsheet
   Future<void> _createAttendanceSpreadsheet() async {
-    if (_sheetsApi == null) return;
+    if (_sheetsApi == null || _folderService == null || _driveApi == null) return;
 
     try {
-      debugPrint('📝 [SECRETARY] Creating attendance spreadsheet for all teachers');
+      // CRITICAL FINAL CHECK: Search entire Drive one more time before creation
+      debugPrint('🚨 [SECRETARY] CRITICAL: Final Drive-wide search before creating attendance spreadsheet...');
+
+      try {
+        final finalQuery = "name='$attendanceSpreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners";
+        final finalResponse = await _driveApi!.files.list(
+          q: finalQuery,
+          spaces: 'drive',
+          $fields: 'files(id,name)',
+        );
+
+        if (finalResponse.files != null && finalResponse.files!.isNotEmpty) {
+          _attendanceSpreadsheetId = finalResponse.files!.first.id;
+          debugPrint('✅✅✅ [SECRETARY] DUPLICATE PREVENTED! Found existing attendance spreadsheet: $_attendanceSpreadsheetId');
+          return;
+        }
+      } catch (e) {
+        debugPrint('⚠️ [SECRETARY] Final Drive search error: $e');
+      }
+
+      // Ensure BPApp folder exists
+      final folderId = await _folderService!.ensureBPAppFolder();
+      if (folderId == null) {
+        throw Exception('Could not create or find BPApp folder');
+      }
+
+      debugPrint('📁 [SECRETARY] Creating attendance spreadsheet in BPApp folder: $folderId');
 
       final spreadsheet = sheets.Spreadsheet(
         properties: sheets.SpreadsheetProperties(
@@ -294,6 +361,15 @@ class SecretaryService extends ChangeNotifier {
 
       final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
       _attendanceSpreadsheetId = response.spreadsheetId;
+
+      // Move spreadsheet to BPApp folder
+      debugPrint('📁 [SECRETARY] Moving attendance spreadsheet to BPApp folder...');
+      final moved = await _folderService!.moveSpreadsheetToFolder(_attendanceSpreadsheetId!);
+      if (moved) {
+        debugPrint('✅ [SECRETARY] Attendance spreadsheet created in BPApp folder: $_attendanceSpreadsheetId');
+      } else {
+        debugPrint('⚠️ [SECRETARY] Created attendance spreadsheet but could not move to folder');
+      }
 
       // Add headers
       await _addSummaryHeaders();

@@ -10,6 +10,7 @@ import 'local_storage_service.dart';
 import 'educator_initialization_service.dart';
 import 'service_account_sheets_service.dart';
 import 'summary_sheet_service.dart';
+import 'drive_folder_service.dart';
 // import 'backup_setup_service.dart'; // Removed - backup feature disabled
 
 class GoogleSheetsService extends ChangeNotifier {
@@ -36,6 +37,7 @@ class GoogleSheetsService extends ChangeNotifier {
   late final EducatorInitializationService _educatorInitService;
   final ServiceAccountSheetsService _serviceAccountService = ServiceAccountSheetsService();
   SummarySheetService? _summarySheetService;
+  DriveFolderService? _folderService;
   
   /// Access to the authentication service for multi-destination saving
   GoogleAuthService get authService => _authService;
@@ -122,26 +124,41 @@ class GoogleSheetsService extends ChangeNotifier {
 
     _sheetsApi = sheets.SheetsApi(client);
     _driveApi = drive.DriveApi(client);
+    _folderService = DriveFolderService(_driveApi!);
   }
 
   Future<void> _findOrCreateSpreadsheet() async {
     debugPrint('🔍 [INIT] Starting spreadsheet discovery process...');
-    
+
     // ALWAYS use user's own OAuth spreadsheet for teacher records
     // Service account is only for saving to educator spreadsheets
     debugPrint('👤 [INIT] Using USER ownership mode for teacher\'s own spreadsheet');
-    
+
+    // Clear any cached spreadsheet ID to force fresh discovery
+    _spreadsheetId = null;
+    _sheetId = null;
+
     // Step 1: Look for user's own BPApp spreadsheet
     await _findExistingSpreadsheet();
-      
+
     if (_spreadsheetId == null) {
       debugPrint('🔍 [INIT] No owned spreadsheet found - checking trash...');
-      
+
       // Step 2: Check if spreadsheet exists in trash before creating new one
       final recoveredFromTrash = await _checkAndRecoverFromTrash();
       if (!recoveredFromTrash) {
-        debugPrint('🔍 [INIT] No recoverable spreadsheet found - creating new one...');
-        await _createSpreadsheet();
+        debugPrint('🔍 [INIT] No recoverable spreadsheet found - will create new one...');
+
+        // Final check before creating to prevent race conditions
+        debugPrint('⚠️ [INIT] Final duplicate check before creation...');
+        await _findExistingSpreadsheet();
+
+        if (_spreadsheetId == null) {
+          debugPrint('📝 [INIT] Confirmed: No existing spreadsheet, creating new one...');
+          await _createSpreadsheet();
+        } else {
+          debugPrint('✅ [INIT] Found spreadsheet in final check, not creating duplicate');
+        }
       }
     } else {
       debugPrint('✅ [INIT] Using existing spreadsheet: $_spreadsheetId');
@@ -167,7 +184,7 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   Future<void> _findExistingSpreadsheet() async {
-    if (_driveApi == null) return;
+    if (_driveApi == null || _folderService == null) return;
 
     try {
       final currentUser = _authService.currentUser;
@@ -179,34 +196,164 @@ class GoogleSheetsService extends ChangeNotifier {
       final userEmail = currentUser!.email;
       debugPrint('🔍 [INIT] Looking for BPApp spreadsheet owned by: $userEmail');
 
-      // Search for BPApp spreadsheet OWNED by current user (not shared)
-      final response = await _driveApi!.files.list(
-        q: "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and '$userEmail' in owners",
-        spaces: 'drive',
-        $fields: 'files(id,name,owners)',
+      // Step 1: Check in BPApp folder first (preferred location)
+      debugPrint('📁 [INIT] Checking BPApp folder for ALL BPApp spreadsheets...');
+
+      // First, let's also search for ALL BPApp spreadsheets in the entire Drive
+      // This is critical because folder IDs can change or be different across users
+      debugPrint('🔍 [INIT] CRITICAL: Searching for ALL BPApp spreadsheets in entire Drive...');
+
+      List<drive.File> allBPAppSpreadsheets = [];
+      try {
+        final allSpreadsheetsQuery = "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners";
+        final allSpreadsheetsResponse = await _driveApi!.files.list(
+          q: allSpreadsheetsQuery,
+          spaces: 'drive',
+          $fields: 'files(id,name,parents,owners(emailAddress,displayName))',
+        );
+
+        if (allSpreadsheetsResponse.files != null) {
+          allBPAppSpreadsheets = allSpreadsheetsResponse.files!;
+          debugPrint('🔍 [INIT] Found ${allBPAppSpreadsheets.length} BPApp spreadsheet(s) owned by user in entire Drive');
+
+          for (final file in allBPAppSpreadsheets) {
+            debugPrint('   📋 Spreadsheet ${file.id} in parents: ${file.parents?.join(", ") ?? "root"}');
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ [INIT] Error searching entire Drive: $e');
+      }
+
+      // If we found any BPApp spreadsheets owned by the user, use the first one
+      if (allBPAppSpreadsheets.isNotEmpty) {
+        _spreadsheetId = allBPAppSpreadsheets.first.id!;
+        debugPrint('✅ [INIT] Found existing BPApp spreadsheet (from Drive search): $_spreadsheetId');
+
+        // Warn if there are duplicates
+        if (allBPAppSpreadsheets.length > 1) {
+          debugPrint('⚠️⚠️⚠️ [INIT] WARNING: Found ${allBPAppSpreadsheets.length} duplicate BPApp spreadsheets!');
+          debugPrint('⚠️ [INIT] Using: $_spreadsheetId');
+          debugPrint('⚠️ [INIT] Duplicates: ${allBPAppSpreadsheets.skip(1).map((f) => f.id).join(", ")}');
+        }
+
+        // Initialize summary sheet service
+        if (_sheetsApi != null) {
+          _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+          await _summarySheetService!.ensureSummarySheetExists();
+        }
+        return;
+      }
+
+      // Then check folder as before (but this is now secondary)
+      final allFolderSpreadsheets = await _folderService!.findSpreadsheetsInFolder(
+        spreadsheetName,
+        userEmail: null, // Don't filter by owner initially
       );
 
-      debugPrint('🔍 [INIT] Found ${response.files?.length ?? 0} spreadsheets owned by user');
+      debugPrint('📊 [INIT] Found ${allFolderSpreadsheets.length} total BPApp spreadsheet(s) in folder');
 
-      if (response.files != null && response.files!.isNotEmpty) {
-        // Verify the first result is actually owned by the current user
-        final file = response.files!.first;
-        final isOwnedByCurrentUser = file.owners?.any((owner) => owner.emailAddress == userEmail) ?? false;
-        
-        if (isOwnedByCurrentUser) {
-          _spreadsheetId = file.id!;
-          debugPrint('✅ [INIT] Found existing spreadsheet owned by user: $_spreadsheetId');
+      // Now filter by ownership
+      final userOwnedSpreadsheets = allFolderSpreadsheets.where((file) {
+        final isOwned = file.owners?.any((owner) =>
+          owner.emailAddress?.toLowerCase() == userEmail.toLowerCase()
+        ) ?? false;
 
-          // Initialize summary sheet service for existing spreadsheet
-          if (_sheetsApi != null) {
-            _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
-            await _summarySheetService!.ensureSummarySheetExists();
-          }
+        if (isOwned) {
+          debugPrint('✅ [INIT] Spreadsheet ${file.id} IS owned by $userEmail');
         } else {
-          debugPrint('⚠️ [INIT] Found spreadsheet but not owned by current user - will create new one');
+          debugPrint('❌ [INIT] Spreadsheet ${file.id} is NOT owned by $userEmail');
+          if (file.owners != null) {
+            for (final owner in file.owners!) {
+              debugPrint('   👤 Actual owner: ${owner.emailAddress}');
+            }
+          }
+        }
+        return isOwned;
+      }).toList();
+
+      debugPrint('📊 [INIT] Found ${userOwnedSpreadsheets.length} spreadsheet(s) owned by $userEmail');
+
+      if (userOwnedSpreadsheets.isNotEmpty) {
+        // Use the first owned spreadsheet found
+        _spreadsheetId = userOwnedSpreadsheets.first.id!;
+        debugPrint('✅ [INIT] Using existing spreadsheet in BPApp folder: $_spreadsheetId');
+
+        // IMPORTANT: If there are multiple owned spreadsheets, warn about duplicates
+        if (userOwnedSpreadsheets.length > 1) {
+          debugPrint('⚠️⚠️⚠️ [INIT] WARNING: Found ${userOwnedSpreadsheets.length} BPApp spreadsheets owned by user!');
+          debugPrint('⚠️ [INIT] Using first one: $_spreadsheetId');
+          debugPrint('⚠️ [INIT] Other duplicate IDs: ${userOwnedSpreadsheets.skip(1).map((f) => f.id).join(", ")}');
+        }
+
+        // Initialize summary sheet service
+        if (_sheetsApi != null) {
+          _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+          await _summarySheetService!.ensureSummarySheetExists();
+        }
+        return;
+      }
+
+      // Step 2: Also check if there are any BPApp spreadsheets with ownership issues
+      if (allFolderSpreadsheets.isNotEmpty && userOwnedSpreadsheets.isEmpty) {
+        debugPrint('⚠️ [INIT] Found BPApp spreadsheets but none owned by user - possible ownership issue');
+        debugPrint('⚠️ [INIT] This could cause duplicate creation - investigating...');
+
+        // Try alternative ownership check using 'me' in query
+        try {
+          final query = "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners";
+          final response = await _driveApi!.files.list(
+            q: query,
+            spaces: 'drive',
+            $fields: 'files(id,name,parents)',
+          );
+
+          if (response.files != null && response.files!.isNotEmpty) {
+            // Check if any of these are in the BPApp folder
+            final folderId = await _folderService!.ensureBPAppFolder();
+            for (final file in response.files!) {
+              if (file.parents?.contains(folderId) == true) {
+                _spreadsheetId = file.id!;
+                debugPrint('✅ [INIT] Found owned spreadsheet via alternative check: $_spreadsheetId');
+
+                // Initialize summary sheet service
+                if (_sheetsApi != null) {
+                  _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+                  await _summarySheetService!.ensureSummarySheetExists();
+                }
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ [INIT] Alternative ownership check failed: $e');
+        }
+      }
+
+      // Step 3: Check root for legacy spreadsheets (backward compatibility)
+      debugPrint('📁 [INIT] Checking root for legacy spreadsheet...');
+      final legacySpreadsheets = await _folderService!.findLegacySpreadsheetsInRoot(spreadsheetName, userEmail);
+
+      if (legacySpreadsheets.isNotEmpty) {
+        final file = legacySpreadsheets.first;
+        _spreadsheetId = file.id!;
+        debugPrint('📋 [INIT] Found legacy spreadsheet in root: $_spreadsheetId');
+
+        // Migrate to BPApp folder
+        debugPrint('📁 [INIT] Migrating legacy spreadsheet to BPApp folder...');
+        final moved = await _folderService!.moveSpreadsheetToFolder(_spreadsheetId!);
+        if (moved) {
+          debugPrint('✅ [INIT] Successfully migrated spreadsheet to BPApp folder');
+        } else {
+          debugPrint('⚠️ [INIT] Could not migrate spreadsheet, will continue using it in root');
+        }
+
+        // Initialize summary sheet service
+        if (_sheetsApi != null) {
+          _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+          await _summarySheetService!.ensureSummarySheetExists();
         }
       } else {
-        debugPrint('ℹ️ [INIT] No existing BPApp spreadsheet found owned by user - will create new one');
+        debugPrint('ℹ️ [INIT] No existing BPApp spreadsheet found - will create new one in folder');
       }
     } catch (e) {
       debugPrint('❌ [INIT] Error finding existing spreadsheet: $e');
@@ -214,18 +361,173 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   Future<void> _createSpreadsheet() async {
-    if (_sheetsApi == null) return;
+    if (_sheetsApi == null || _folderService == null || _driveApi == null) return;
 
     try {
-      final spreadsheet = sheets.Spreadsheet(
-        properties: sheets.SpreadsheetProperties(
-          title: spreadsheetName,
-          locale: 'en_US',
-          timeZone: 'Asia/Jerusalem',
-        ),
-        sheets: [
-          sheets.Sheet(
+      // CRITICAL FINAL CHECK: Search entire Drive one more time
+      final currentUser = _authService.currentUser;
+      if (currentUser?.email != null) {
+        debugPrint('⚠️ [INIT] About to create NEW spreadsheet for user: ${currentUser!.email}');
+        debugPrint('🚨 [INIT] CRITICAL: Final Drive-wide search before creation...');
+
+        try {
+          final finalQuery = "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners";
+          final finalResponse = await _driveApi!.files.list(
+            q: finalQuery,
+            spaces: 'drive',
+            $fields: 'files(id,name)',
+          );
+
+          if (finalResponse.files != null && finalResponse.files!.isNotEmpty) {
+            _spreadsheetId = finalResponse.files!.first.id!;
+            debugPrint('✅✅✅ [INIT] DUPLICATE PREVENTED! Found existing spreadsheet: $_spreadsheetId');
+
+            // Initialize summary sheet service
+            if (_sheetsApi != null) {
+              _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+              await _summarySheetService!.ensureSummarySheetExists();
+            }
+            return;
+          }
+        } catch (e) {
+          debugPrint('⚠️ [INIT] Final Drive search error: $e');
+        }
+
+        debugPrint('⚠️ [INIT] Last check for existing spreadsheets before creation...');
+
+        // One final search to prevent duplicates - force a fresh search
+        _spreadsheetId = null; // Clear any cached ID
+        await _findExistingSpreadsheet();
+        if (_spreadsheetId != null) {
+          debugPrint('✅ [INIT] Found existing spreadsheet on final check: $_spreadsheetId');
+          return; // Don't create duplicate
+        }
+
+        // Add extra delay and retry to handle potential race conditions
+        debugPrint('⏳ [INIT] Waiting 2 seconds and checking once more to prevent duplicates...');
+        await Future.delayed(const Duration(seconds: 2));
+
+        // Force refresh folder service to clear any cached state
+        _folderService = DriveFolderService(_driveApi!);
+        await _findExistingSpreadsheet();
+        if (_spreadsheetId != null) {
+          debugPrint('✅ [INIT] Found existing spreadsheet on delayed check: $_spreadsheetId');
+          return; // Don't create duplicate
+        }
+      }
+
+      // Ensure BPApp folder exists
+      final folderId = await _folderService!.ensureBPAppFolder();
+      if (folderId == null) {
+        throw Exception('Could not create or find BPApp folder');
+      }
+
+      debugPrint('📁 [INIT] Creating new spreadsheet directly in BPApp folder: $folderId');
+
+      // Method 1: First try creating directly via Drive API with parent folder
+      try {
+        // Create spreadsheet metadata with parent folder
+        final fileMetadata = drive.File()
+          ..name = spreadsheetName
+          ..mimeType = 'application/vnd.google-apps.spreadsheet'
+          ..parents = [folderId]; // Specify parent folder during creation
+
+        // Create the spreadsheet file in the folder
+        final driveFile = await _driveApi!.files.create(
+          fileMetadata,
+          $fields: 'id',
+        );
+
+        _spreadsheetId = driveFile.id!;
+        debugPrint('✅ [INIT] Created spreadsheet directly in folder: $_spreadsheetId');
+
+        // Now set up the spreadsheet structure using Sheets API
+        await _setupSpreadsheetStructure();
+
+      } catch (e) {
+        debugPrint('⚠️ [INIT] Direct folder creation failed, trying alternative method: $e');
+
+        // Method 2: Fallback to create then move (original approach with retry)
+        final spreadsheet = sheets.Spreadsheet(
+          properties: sheets.SpreadsheetProperties(
+            title: spreadsheetName,
+            locale: 'en_US',
+            timeZone: 'Asia/Jerusalem',
+          ),
+          sheets: [
+            sheets.Sheet(
+              properties: sheets.SheetProperties(
+                title: worksheetName,
+                rightToLeft: true,
+                gridProperties: sheets.GridProperties(
+                  frozenRowCount: 1,
+                  columnCount: hebrewHeaders.length,
+                ),
+              ),
+            ),
+          ],
+        );
+
+        final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
+        _spreadsheetId = response.spreadsheetId!;
+
+        // Add a small delay before moving to avoid race condition
+        await Future.delayed(const Duration(seconds: 1));
+
+        // Move spreadsheet to BPApp folder with retry logic
+        debugPrint('📁 [INIT] Moving new spreadsheet to BPApp folder...');
+        bool moved = false;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+          moved = await _folderService!.moveSpreadsheetToFolder(_spreadsheetId!);
+          if (moved) {
+            debugPrint('✅ [INIT] Spreadsheet moved to BPApp folder on attempt $attempt');
+            break;
+          } else {
+            debugPrint('⚠️ [INIT] Move attempt $attempt failed');
+            if (attempt < 3) {
+              await Future.delayed(Duration(seconds: attempt * 2)); // Exponential backoff
+            }
+          }
+        }
+
+        if (!moved) {
+          debugPrint('⚠️ [INIT] Created spreadsheet but could not move to folder after 3 attempts');
+        }
+
+        await _addHeaders();
+        await _protectSpreadsheet();
+      }
+
+      // Initialize summary sheet service and create summary sheet
+      if (_summarySheetService == null && _sheetsApi != null) {
+        _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+        await _summarySheetService!.ensureSummarySheetExists();
+      }
+
+      debugPrint('✅ [INIT] Created new spreadsheet with summary sheet: $_spreadsheetId');
+
+      // Backup setup removed - no longer adding instructions sheet
+    } catch (e) {
+      throw Exception('שגיאה ביצירת גיליון אלקטרוני: ${e.toString()}');
+    }
+  }
+
+  /// Setup spreadsheet structure when created via Drive API
+  Future<void> _setupSpreadsheetStructure() async {
+    if (_sheetsApi == null || _spreadsheetId == null) return;
+
+    try {
+      // Get the spreadsheet to find the default sheet ID
+      final spreadsheet = await _sheetsApi!.spreadsheets.get(_spreadsheetId!);
+      final defaultSheet = spreadsheet.sheets?.first;
+      final defaultSheetId = defaultSheet?.properties?.sheetId ?? 0;
+
+      // Update the default sheet properties to match our requirements
+      final requests = [
+        sheets.Request(
+          updateSheetProperties: sheets.UpdateSheetPropertiesRequest(
             properties: sheets.SheetProperties(
+              sheetId: defaultSheetId,
               title: worksheetName,
               rightToLeft: true,
               gridProperties: sheets.GridProperties(
@@ -233,25 +535,31 @@ class GoogleSheetsService extends ChangeNotifier {
                 columnCount: hebrewHeaders.length,
               ),
             ),
+            fields: 'title,rightToLeft,gridProperties.frozenRowCount,gridProperties.columnCount',
           ),
-        ],
+        ),
+      ];
+
+      final batchUpdateRequest = sheets.BatchUpdateSpreadsheetRequest(
+        requests: requests,
       );
 
-      final response = await _sheetsApi!.spreadsheets.create(spreadsheet);
-      _spreadsheetId = response.spreadsheetId!;
+      await _sheetsApi!.spreadsheets.batchUpdate(
+        batchUpdateRequest,
+        _spreadsheetId!,
+      );
 
+      // Set the sheet ID
+      _sheetId = defaultSheetId;
+
+      // Add headers and protection
       await _addHeaders();
       await _protectSpreadsheet();
 
-      // Initialize summary sheet service and create summary sheet
-      _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
-      await _summarySheetService!.ensureSummarySheetExists();
-
-      debugPrint('Created new spreadsheet with summary sheet: $_spreadsheetId');
-
-      // Backup setup removed - no longer adding instructions sheet
+      debugPrint('✅ [INIT] Spreadsheet structure configured successfully');
     } catch (e) {
-      throw Exception('שגיאה ביצירת גיליון אלקטרוני: ${e.toString()}');
+      debugPrint('❌ [INIT] Error setting up spreadsheet structure: $e');
+      throw e;
     }
   }
 
@@ -300,11 +608,41 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   Future<bool> _checkAndRecoverFromTrash() async {
-    if (_driveApi == null) return false;
+    if (_driveApi == null || _folderService == null) return false;
 
     try {
       debugPrint('Checking for BPApp spreadsheet in trash...');
-      
+
+      // First check if BPApp folder itself was deleted
+      final recoveredFolderId = await _folderService!.checkAndRecoverFolder();
+      if (recoveredFolderId != null) {
+        debugPrint('📁 [INIT] Recovered BPApp folder from trash');
+        // Now check for spreadsheets in the recovered folder - filter by current user's email
+        final currentUser = _authService.currentUser;
+        final userEmail = currentUser?.email;
+
+        final folderSpreadsheets = await _folderService!.findSpreadsheetsInFolder(
+          spreadsheetName,
+          userEmail: userEmail,
+        );
+
+        if (folderSpreadsheets.isNotEmpty) {
+          _spreadsheetId = folderSpreadsheets.first.id;
+          debugPrint('✅ [INIT] Found spreadsheet in recovered folder: $_spreadsheetId');
+
+          // Apply protection and initialize summary sheet
+          await _protectSpreadsheet();
+          if (_sheetsApi != null) {
+            _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
+            await _summarySheetService!.ensureSummarySheetExists();
+          }
+
+          _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! כל הנתונים שלך נשמרו.';
+          notifyListeners();
+          return true;
+        }
+      }
+
       // Search for the spreadsheet in trash
       final response = await _driveApi!.files.list(
         q: "name='$spreadsheetName' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=true",
@@ -315,11 +653,11 @@ class GoogleSheetsService extends ChangeNotifier {
       if (response.files != null && response.files!.isNotEmpty) {
         final deletedFile = response.files!.first;
         debugPrint('Found BPApp spreadsheet in trash: ${deletedFile.id}');
-        
+
         // Attempt to recover the file from trash
         return await _recoverFromTrash(deletedFile.id!, deletedFile.name!);
       }
-      
+
       debugPrint('No BPApp spreadsheet found in trash');
       return false;
     } catch (e) {
@@ -329,25 +667,34 @@ class GoogleSheetsService extends ChangeNotifier {
   }
 
   Future<bool> _recoverFromTrash(String fileId, String fileName) async {
-    if (_driveApi == null) return false;
+    if (_driveApi == null || _folderService == null) return false;
 
     try {
       debugPrint('Attempting to recover spreadsheet from trash: $fileId');
-      
+
       // Create an update request to untrash the file
       final fileUpdate = drive.File();
       fileUpdate.trashed = false;
-      
+
       // Restore the file from trash
       await _driveApi!.files.update(
         fileUpdate,
         fileId,
       );
-      
+
       // Set the recovered spreadsheet ID
       _spreadsheetId = fileId;
 
       debugPrint('Successfully recovered BPApp spreadsheet from trash: $fileId');
+
+      // Ensure BPApp folder exists and move recovered spreadsheet to it
+      debugPrint('📁 [INIT] Moving recovered spreadsheet to BPApp folder...');
+      final moved = await _folderService!.moveSpreadsheetToFolder(_spreadsheetId!);
+      if (moved) {
+        debugPrint('✅ [INIT] Recovered spreadsheet moved to BPApp folder');
+      } else {
+        debugPrint('⚠️ [INIT] Could not move recovered spreadsheet to folder');
+      }
 
       // Apply protection to recovered spreadsheet
       await _protectSpreadsheet();
@@ -357,13 +704,13 @@ class GoogleSheetsService extends ChangeNotifier {
         _summarySheetService = SummarySheetService(_sheetsApi!, _spreadsheetId!);
         await _summarySheetService!.ensureSummarySheetExists();
       }
-      
+
       // Set recovery success message
       _recoveryMessage = 'הגיליון האלקטרוני שלך שוחזר בהצלחה מהפח! כל הנתונים שלך נשמרו.';
-      
+
       // Notify about recovery (this could trigger UI notification)
       notifyListeners();
-      
+
       return true;
     } catch (e) {
       debugPrint('Error recovering spreadsheet from trash: $e');
@@ -712,7 +1059,7 @@ class GoogleSheetsService extends ChangeNotifier {
 
     try {
       final recordWithScore = record.withCalculatedScore();
-      
+
       // Step 1: ALWAYS save locally first (instant feedback to teacher)
       bool localSaveSuccess = false;
       if (_offlineFirstEnabled && _localStorageService.isInitialized) {
@@ -725,56 +1072,83 @@ class GoogleSheetsService extends ChangeNotifier {
         }
       }
 
-      // Step 2: Attempt online sync
+      // Step 2: Attempt online sync with retry logic for 503 errors
       bool onlineSuccess = false;
-      
-      // Ensure spreadsheet exists before attempting save
-      if (_spreadsheetId == null) {
-        debugPrint('⚠️ [SAVE] No spreadsheet ID found, attempting to discover/create spreadsheet');
-        await _findExistingSpreadsheet();
-        
-        if (_spreadsheetId == null) {
-          debugPrint('🔍 [SAVE] No owned spreadsheet found - creating new one...');
-          await _createSpreadsheet();
-        }
-        
-        if (_spreadsheetId != null && _sheetId == null) {
-          await _getSheetId();
-        }
-      }
-      
-      // Save using the available method
-      if (_sheetsApi != null && _spreadsheetId != null) {
-        // Use OAuth for the teacher's own spreadsheet
-        debugPrint('👤 [SAVE] Using USER OAuth for save operation');
+      int retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries && !onlineSuccess) {
         try {
-          onlineSuccess = await _originalSaveRecord(recordWithScore);
+          // Ensure spreadsheet exists before attempting save
+          if (_spreadsheetId == null) {
+            debugPrint('⚠️ [SAVE] No spreadsheet ID found, attempting to discover/create spreadsheet');
+            await _findExistingSpreadsheet();
+
+            if (_spreadsheetId == null) {
+              debugPrint('🔍 [SAVE] No owned spreadsheet found - creating new one...');
+              await _createSpreadsheet();
+            }
+
+            if (_spreadsheetId != null && _sheetId == null) {
+              await _getSheetId();
+            }
+          }
+
+          // Save using the available method
+          if (_sheetsApi != null && _spreadsheetId != null) {
+            // Use OAuth for the teacher's own spreadsheet
+            debugPrint('👤 [SAVE] Using USER OAuth for save operation (attempt ${retryCount + 1})');
+            onlineSuccess = await _originalSaveRecord(recordWithScore);
+          } else if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
+            // Use service account if OAuth is not available
+            debugPrint('🔐 [SAVE] Using SERVICE ACCOUNT for save operation (attempt ${retryCount + 1})');
+            final userEmail = _authService.currentUser?.email;
+            final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
+
+            if (userEmail != null) {
+              onlineSuccess = await _serviceAccountService.saveRecordForUser(recordWithScore, userEmail, userName);
+            }
+          } else {
+            debugPrint('❌ [SAVE] No save method available');
+            break; // No point retrying if no method available
+          }
+
         } catch (e) {
-          debugPrint('❌ [SAVE] Error in user-owned save: $e');
+          // Check if it's a 503 service unavailable error
+          if (e.toString().contains('503') || e.toString().contains('Service Unavailable') ||
+              e.toString().contains('service is currently unavailable')) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              // Exponential backoff: 2s, 4s, 8s
+              final waitTime = Duration(seconds: 2 * (1 << (retryCount - 1)));
+              debugPrint('⚠️ [SAVE] Service unavailable (503), retrying in ${waitTime.inSeconds}s... (attempt $retryCount/$maxRetries)');
+              await Future.delayed(waitTime);
+            } else {
+              debugPrint('❌ [SAVE] Service unavailable after $maxRetries attempts');
+              _setError('השירות אינו זמין כרגע. נסה שוב מאוחר יותר.');
+            }
+          } else {
+            // Not a 503 error, don't retry
+            debugPrint('❌ [SAVE] Error in save operation: $e');
+            break;
+          }
         }
-      } else if (AppConfig.useServiceAccount && _serviceAccountService.isInitialized) {
-        // Use service account if OAuth is not available
-        debugPrint('🔐 [SAVE] Using SERVICE ACCOUNT for save operation');
-        final userEmail = _authService.currentUser?.email;
-        final userName = _authService.currentUser?.displayName ?? userEmail?.split('@')[0] ?? 'User';
-        
-        if (userEmail != null) {
-          onlineSuccess = await _serviceAccountService.saveRecordForUser(recordWithScore, userEmail, userName);
+
+        if (onlineSuccess) {
+          break; // Success, no need to retry
         }
-      } else {
-        debugPrint('❌ [SAVE] No save method available');
       }
-      
+
       if (onlineSuccess) {
         // Mark as synced in local storage
         if (localSaveSuccess) {
           await _localStorageService.markAsSynced(recordWithScore);
         }
-        
+
         // Update autocomplete data (preserve original behavior)
         _autocompleteData = _autocompleteData.addFromRecord(recordWithScore);
         notifyListeners();
-        
+
         debugPrint('✅ [SAVE] Online sync successful');
       } else {
         // Mark as pending sync in local storage
@@ -796,13 +1170,17 @@ class GoogleSheetsService extends ChangeNotifier {
     } catch (e) {
       _setError('שגיאה בשמירת הרשומה: ${e.toString()}');
       debugPrint('❌ [SAVE] Critical error in save process: $e');
-      
+
       // Emergency fallback: Try original save method
       if (_sheetsApi != null && _spreadsheetId != null) {
         debugPrint('🚨 [SAVE] Attempting emergency fallback to original save method');
-        return await _originalSaveRecord(record.withCalculatedScore());
+        try {
+          return await _originalSaveRecord(record.withCalculatedScore());
+        } catch (fallbackError) {
+          debugPrint('❌ [SAVE] Emergency fallback also failed: $fallbackError');
+        }
       }
-      
+
       return false;
     } finally {
       _setLoading(false);
