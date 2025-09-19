@@ -435,15 +435,61 @@ class SecretaryService extends ChangeNotifier {
             fields: 'userEnteredFormat',
           ),
         ),
-        // Auto-resize all columns to fit content
+        // Set column widths with extra padding for better readability
         sheets.Request(
-          autoResizeDimensions: sheets.AutoResizeDimensionsRequest(
-            dimensions: sheets.DimensionRange(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 120,  // Date column
+            ),
+            range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 0,
-              endIndex: 7,  // 7 columns in summary sheet
+              endIndex: 1,  // תאריך
             ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 150,  // Class name
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 1,
+              endIndex: 2,  // שם כיתה
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 100,  // Numeric columns
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 2,
+              endIndex: 6,  // נוכחים, חסרים, מאחרים, סה"כ
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 200,  // Teacher name column
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 6,
+              endIndex: 7,  // שם המורה
+            ),
+            fields: 'pixelSize',
           ),
         ),
       ];

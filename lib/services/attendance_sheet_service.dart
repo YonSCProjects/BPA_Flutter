@@ -593,15 +593,19 @@ class AttendanceSheetService extends ChangeNotifier {
             fields: 'userEnteredFormat',
           ),
         ),
-        // Auto-resize all columns to fit content
+        // Set column widths with extra padding for better readability
         sheets.Request(
-          autoResizeDimensions: sheets.AutoResizeDimensionsRequest(
-            dimensions: sheets.DimensionRange(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 180,  // Wider for student names in attendance sheets
+            ),
+            range: sheets.DimensionRange(
               sheetId: sheetId,
               dimension: 'COLUMNS',
               startIndex: 0,
-              endIndex: columnCount,
+              endIndex: columnCount,  // Apply to all columns
             ),
+            fields: 'pixelSize',
           ),
         ),
       ];

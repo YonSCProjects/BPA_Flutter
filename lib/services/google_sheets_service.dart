@@ -749,15 +749,75 @@ class GoogleSheetsService extends ChangeNotifier {
             fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
           ),
         ),
-        // Auto-resize all columns to fit content
+        // Set column widths with extra padding for better readability
         sheets.Request(
-          autoResizeDimensions: sheets.AutoResizeDimensionsRequest(
-            dimensions: sheets.DimensionRange(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 150,  // Default width with padding
+            ),
+            range: sheets.DimensionRange(
               sheetId: 0,
               dimension: 'COLUMNS',
               startIndex: 0,
-              endIndex: hebrewHeaders.length,
+              endIndex: 1,  // תאריך
             ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 180,  // Wider for student names
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 1,
+              endIndex: 2,  // שם התלמיד
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 120,  // Class names
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 2,
+              endIndex: 4,  // שם הכיתה and מספר השיעור
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 100,  // Score columns
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 4,
+              endIndex: 11,  // All score columns
+            ),
+            fields: 'pixelSize',
+          ),
+        ),
+        sheets.Request(
+          updateDimensionProperties: sheets.UpdateDimensionPropertiesRequest(
+            properties: sheets.DimensionProperties(
+              pixelSize: 250,  // Wide for comments
+            ),
+            range: sheets.DimensionRange(
+              sheetId: 0,
+              dimension: 'COLUMNS',
+              startIndex: 11,
+              endIndex: 12,  // הערות
+            ),
+            fields: 'pixelSize',
           ),
         ),
       ];
