@@ -634,8 +634,8 @@ class ServiceAccountSheetsService extends ChangeNotifier {
       }
       
       _logDebug('🔄 [SORT] Finding position for record: ${record.date} (class ${record.classNumber})');
-      
-      // Parse the new record's date
+
+      // Parse the new record's date (sorting in ascending order - oldest first)
       final newRecordDate = _parseDate(record.date);
       _logDebug('🔄 [SORT] Parsed record date: $newRecordDate');
       
@@ -647,10 +647,10 @@ class ServiceAccountSheetsService extends ChangeNotifier {
         final existingClassNum = int.tryParse(row[3]?.toString() ?? '') ?? 0;
         
         _logDebug('🔄 [SORT] Comparing with row ${i + 2}: ${row[0]} (class $existingClassNum)');
-        
-        // First sort by date (newer dates first)
+
+        // First sort by date (older dates first - ascending order)
         if (newRecordDate != null && existingDate != null) {
-          if (newRecordDate.isAfter(existingDate)) {
+          if (newRecordDate.isBefore(existingDate)) {
             _logDebug('✅ [SORT] Found position by date: inserting at row ${i + 2}');
             return i + 2; // Insert before this row
           } else if (newRecordDate.isEqual(existingDate)) {

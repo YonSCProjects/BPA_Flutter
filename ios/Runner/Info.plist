@@ -45,5 +45,24 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Google Sign-In URL Scheme -->
+	<key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.bpa.student</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.bpa.student</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Network permissions for API calls -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
