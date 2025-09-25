@@ -25,7 +25,14 @@
       "Bash(dart analyze:*)",
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(nc localhost 64871)"
+      "Bash(nc localhost 64871)",
+      "Bash(nc localhost 60017)",
+      "Bash(taskkill:*)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(cmd /c:*)",
+      "Bash(tasklist)",
+      "Bash(touch:*)"
     ],
     "deny": [],
     "ask": [],
