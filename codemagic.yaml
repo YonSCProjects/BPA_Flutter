@@ -1,0 +1,54 @@
+workflows:
+  ios-workflow:
+    name: iOS Workflow
+    instance_type: mac_mini_m1
+    max_build_duration: 60
+    environment:
+      ios_signing:
+        distribution_type: ad_hoc  # For Firebase App Distribution
+        bundle_identifier: com.bpa.student
+      vars:
+        # Get Firebase token by running: firebase login:ci
+        # Then add it to Codemagic Environment variables as FIREBASE_TOKEN
+        BUNDLE_ID: "com.bpa.student"
+        APP_NAME: "BPApp"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          flutter packages pub get
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install
+
+      - name: Flutter build IPA
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=$BUILD_NUMBER
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+      - flutter_drive.log
+
+    publishing:
+      firebase:
+        # Add FIREBASE_TOKEN to Codemagic Environment variables
+        firebase_token: $FIREBASE_TOKEN
+        ios:
+          app_id: 1:797019072021:ios:c0ac3aa29b52196652501c
+          groups:
+            - testers
+
+      email:
+        recipients:
+          - yon.scprojects@gmail.com
+        notify:
+          success: true
+          failure: true

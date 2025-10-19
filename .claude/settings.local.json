@@ -32,7 +32,12 @@
       "Bash(rm:*)",
       "Bash(cmd /c:*)",
       "Bash(tasklist)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(openssl genrsa:*)",
+      "Bash(openssl req:*)",
+      "Bash(curl:*)",
+      "Bash(openssl x509:*)",
+      "Bash(openssl pkcs12:*)"
     ],
     "deny": [],
     "ask": [],
